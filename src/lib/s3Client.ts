@@ -8,6 +8,9 @@ export function getS3Client(): S3Client {
     const { region } = getS3Config()
     client = new S3Client({
       region,
+      // Avoid checksum query params on presigned PUT URLs (breaks browser fetch uploads).
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!

@@ -39,6 +39,7 @@ S3 → bucket → **Permissions** → **Cross-origin resource sharing (CORS)**:
     "AllowedMethods": ["PUT", "GET", "HEAD"],
     "AllowedOrigins": [
       "http://localhost:3000",
+      "http://127.0.0.1:3000",
       "https://YOUR_PRODUCTION_APP_DOMAIN"
     ],
     "ExposeHeaders": ["ETag"],
@@ -112,7 +113,7 @@ In production, prefer an **IAM role** on ECS/Lambda/EC2 and omit static keys (th
 |---------|-----|
 | API 503 on presign | Set all four env vars; restart API |
 | API 403/400 on presign | IAM missing `PutObject` / `GetObject` on `dog-photos/*` |
-| Browser “Network Error” on PUT | Add CORS `AllowedOrigins` for your frontend URL and `PUT` method |
+| Browser “Network Error” on PUT | Add CORS `AllowedOrigins` for your frontend URL **and** `127.0.0.1` if you open the app that way; allow `PUT` |
 | PUT 403 | Wrong IAM, wrong bucket, or `Content-Type` header doesn’t match presign |
 | Image broken after save | `GetObject` denied, or upload PUT failed silently—check Network tab |
 
