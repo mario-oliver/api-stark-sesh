@@ -11,6 +11,7 @@ import config from './config/config.js'
 
 import usersRoutes from './routes/userRoutes.js'
 import dogRoutes from './routes/dogRoutes.js'
+import uploadsRoutes from './routes/uploadsRoutes.js'
 
 import errorHandler from './plugins/errorHandler.js'
 import { clerkPlugin } from '@clerk/fastify'
@@ -135,7 +136,8 @@ async function registerPlugins(fastify: ReturnType<typeof Fastify>) {
 async function registerRoutes(fastify: ReturnType<typeof Fastify>) {
   const protectedRouteConfigs = [
     { prefix: '/v1/users', routes: usersRoutes },
-    { prefix: '/v1/dogs', routes: dogRoutes }
+    { prefix: '/v1/dogs', routes: dogRoutes },
+    { prefix: '/v1/uploads', routes: uploadsRoutes }
   ]
 
   for (const config of protectedRouteConfigs) {

@@ -8,7 +8,7 @@ export type CreateDogInput = {
   name: string
   breed?: string | null
   age?: number | null
-  photoUrl?: string | null
+  photoKey?: string | null
   notes?: string | null
 }
 
@@ -19,7 +19,7 @@ export async function createDogWithDefaultPlan(userId: string, input: CreateDogI
         name: input.name,
         breed: input.breed ?? null,
         age: input.age ?? null,
-        photoUrl: input.photoUrl ?? null,
+        photoKey: input.photoKey ?? null,
         notes: input.notes ?? null
       }
     })

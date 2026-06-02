@@ -2,9 +2,11 @@ import type { FastifyReply } from 'fastify'
 import { prisma } from '../lib/prisma.js'
 import { assertDogMemberAccess, getDogForMember } from '../lib/dogAccess.js'
 import { ensureUserExists } from '../lib/ensureUser.js'
+import { serializeDog, serializeDogs } from '../lib/serializeDog.js'
 import type { AuthenticatedRequest } from '../types/auth.js'
 import {
   sendCreated,
+  sendError,
   sendForbidden,
   sendNotFound,
   sendSuccess
@@ -13,6 +15,15 @@ import { resolveTodayLog } from '../services/dailyCare/resolveTodayLog.js'
 import { todayUtcDateString } from '../services/dailyCare/dateUtils.js'
 import { createDogWithDefaultPlan } from '../services/carePlans/createDogWithDefaultPlan.js'
 import { DEFAULT_MOBILITY_STRENGTH_PLAN_NAME } from '../services/carePlans/defaultMobilityStrengthPlan.js'
+import { assertPhotoKeyOwnedByUser } from '../services/s3/dogPhotos.js'
+
+function validatePhotoKeyForUser(photoKey: string | null | undefined, userId: string) {
+  if (photoKey == null || photoKey === '') {
+    return null
+  }
+  assertPhotoKeyOwnedByUser(photoKey, userId)
+  return photoKey
+}
 
 export class DogsController {
   async listDogs(request: AuthenticatedRequest, reply: FastifyReply) {
@@ -32,36 +43,30 @@ export class DogsController {
 
     if (memberships.length === 0) {
       const stark = await prisma.dog.findFirst({ where: { name: 'Stark' } })
-      if (stark) {
-        const memberCount = await prisma.dogMember.count({ where: { dogId: stark.id } })
-        if (process.env.STARK_AUTO_ATTACH === 'true') {
-          await prisma.dogMember.upsert({
-            where: { dogId_userId: { dogId: stark.id, userId: request.user.id } },
-            create: { dogId: stark.id, userId: request.user.id, role: 'caregiver' },
-            update: {}
-          })
-          memberships = await prisma.dogMember.findMany({
-            where: { userId: request.user.id },
-            include: {
-              dog: {
-                include: {
-                  carePlans: { where: { isActive: true }, take: 1 }
-                }
+      if (stark && process.env.STARK_AUTO_ATTACH === 'true') {
+        await prisma.dogMember.upsert({
+          where: { dogId_userId: { dogId: stark.id, userId: request.user.id } },
+          create: { dogId: stark.id, userId: request.user.id, role: 'caregiver' },
+          update: {}
+        })
+        memberships = await prisma.dogMember.findMany({
+          where: { userId: request.user.id },
+          include: {
+            dog: {
+              include: {
+                carePlans: { where: { isActive: true }, take: 1 }
               }
-            },
-            orderBy: { createdAt: 'asc' }
-          })
-        }
+            }
+          },
+          orderBy: { createdAt: 'asc' }
+        })
       }
     }
 
-    return sendSuccess(
-      reply,
-      memberships.map(m => ({
-        ...m.dog,
-        role: m.role
-      }))
+    const dogs = await serializeDogs(
+      memberships.map(m => ({ ...m.dog, role: m.role ?? undefined }))
     )
+    return sendSuccess(reply, dogs)
   }
 
   async createDog(request: AuthenticatedRequest, reply: FastifyReply) {
@@ -70,20 +75,29 @@ export class DogsController {
       name: string
       breed?: string | null
       age?: number | null
-      photoUrl?: string | null
+      photoKey?: string | null
       notes?: string | null
     }
 
-    const dog = await createDogWithDefaultPlan(request.user.id, body)
-    return sendCreated(
-      reply,
-      {
-        ...dog,
-        role: 'caregiver',
-        defaultCarePlan: DEFAULT_MOBILITY_STRENGTH_PLAN_NAME
-      },
-      'Dog created with default mobility & strength routine'
-    )
+    let photoKey: string | null = null
+    try {
+      photoKey = validatePhotoKeyForUser(body.photoKey, request.user.id)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid photo'
+      return sendError(reply, message, 400)
+    }
+
+    const dog = await createDogWithDefaultPlan(request.user.id, {
+      ...body,
+      photoKey
+    })
+
+    const serialized = await serializeDog(dog, {
+      role: 'caregiver',
+      defaultCarePlan: DEFAULT_MOBILITY_STRENGTH_PLAN_NAME
+    })
+
+    return sendCreated(reply, serialized, 'Dog created with default mobility & strength routine')
   }
 
   async updateDog(request: AuthenticatedRequest, reply: FastifyReply) {
@@ -92,7 +106,7 @@ export class DogsController {
       name?: string
       breed?: string | null
       age?: number | null
-      photoUrl?: string | null
+      photoKey?: string | null
       notes?: string | null
     }
 
@@ -101,18 +115,28 @@ export class DogsController {
       return sendForbidden(reply, 'You do not have access to this dog')
     }
 
+    if (body.photoKey !== undefined) {
+      try {
+        validatePhotoKeyForUser(body.photoKey, request.user.id)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid photo'
+        return sendError(reply, message, 400)
+      }
+    }
+
     const dog = await prisma.dog.update({
       where: { id },
       data: {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.breed !== undefined && { breed: body.breed }),
         ...(body.age !== undefined && { age: body.age }),
-        ...(body.photoUrl !== undefined && { photoUrl: body.photoUrl }),
+        ...(body.photoKey !== undefined && { photoKey: body.photoKey }),
         ...(body.notes !== undefined && { notes: body.notes })
       }
     })
 
-    return sendSuccess(reply, { ...dog, role: member.role })
+    const serialized = await serializeDog(dog, { role: member.role ?? undefined })
+    return sendSuccess(reply, serialized)
   }
 
   async getDog(request: AuthenticatedRequest, reply: FastifyReply) {
@@ -121,7 +145,9 @@ export class DogsController {
     if (!dog) {
       return sendNotFound(reply, 'Dog not found')
     }
-    return sendSuccess(reply, dog)
+    const member = await assertDogMemberAccess(id, request.user.id)
+    const serialized = await serializeDog(dog, { role: member?.role ?? undefined })
+    return sendSuccess(reply, serialized)
   }
 
   async getToday(request: AuthenticatedRequest, reply: FastifyReply) {
@@ -135,7 +161,8 @@ export class DogsController {
 
     const date = query.date ?? todayUtcDateString()
     const payload = await resolveTodayLog(id, date)
-    return sendSuccess(reply, payload)
+    const dog = await serializeDog(payload.dog)
+    return sendSuccess(reply, { ...payload, dog })
   }
 
   async addMember(request: AuthenticatedRequest, reply: FastifyReply) {

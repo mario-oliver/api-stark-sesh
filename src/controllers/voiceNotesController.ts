@@ -4,6 +4,7 @@ import { assertDogMemberAccess } from '../lib/dogAccess.js'
 import { ensureUserExists } from '../lib/ensureUser.js'
 import type { AuthenticatedRequest } from '../types/auth.js'
 import { transcribe } from '../services/speechToText.js'
+import { serializeDog } from '../lib/serializeDog.js'
 import { resolveTodayLog } from '../services/dailyCare/resolveTodayLog.js'
 import { todayUtcDateString } from '../services/dailyCare/dateUtils.js'
 import { enqueueVoiceNoteProcessingJob } from '../services/voiceNoteProcessing/queue.js'
@@ -71,10 +72,11 @@ export class VoiceNotesController {
       }
 
       const refreshed = await resolveTodayLog(dogId, date)
+      const dog = await serializeDog(refreshed.dog)
 
       return sendCreated(
         reply,
-        { text, voiceNote, ...refreshed },
+        { text, voiceNote, ...refreshed, dog },
         'Voice note saved'
       )
     } catch (err) {
