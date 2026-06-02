@@ -1,0 +1,410 @@
+// Coaching OS — session-centric model: PracticePlan (drills) → Observations → (future) insights
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SessionType {
+  TEAM_PRACTICE
+  SKILL_SESSION
+  GAME
+  TRYOUT
+  OTHER
+}
+
+enum PlanSource {
+  MANUAL
+  LLM
+  MIXED
+}
+
+enum ObservationType {
+  PLAYER_FEEDBACK
+  TEAM_PATTERN
+  EFFORT
+  TACTICAL
+  GENERAL
+}
+
+enum Sentiment {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  MIXED
+}
+
+enum ObservationScope {
+  TEAM_WIDE
+  PLAYER_SPECIFIC
+  MIXED
+  UNKNOWN
+}
+
+enum ObservationTaggingStatus {
+  PENDING
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
+enum ObservationStatStatus {
+  PENDING
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
+enum ObservationProcessingJobStatus {
+  PENDING
+  RUNNING
+  RETRY
+  COMPLETED
+  FAILED
+}
+
+enum SessionStatMetric {
+  points
+  assists
+  rebounds
+  steals
+  blocks
+  turnovers
+  fouls
+}
+
+enum DerivedStatLineStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  EDITED
+}
+
+model User {
+  id        String   @id
+  email     String   @unique
+  firstName String?
+  lastName  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions Session[]
+  teams    Team[]
+  reviewedDerivedStatLines DerivedStatLine[] @relation("DerivedStatLineReviewedBy")
+
+  @@index([id])
+  @@index([email])
+}
+
+model Subscriptions {
+  id                   String   @id @default(uuid())
+  status               String?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  userId               String   @unique
+  currentPeriodEnd     Int?
+  currentPeriodStart   Int?
+  cancelAtPeriodEnd    Boolean?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  name      String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  members  TeamMember[]
+  sessions Session[]
+
+  @@index([userId])
+}
+
+model TeamMember {
+  id              String    @id @default(uuid())
+  teamId          String
+  number          String    @default("")
+  name            String    @default("")
+  isActive        Boolean   @default(true)
+  deactivatedAt   DateTime?
+  createdAt       DateTime  @default(now())
+
+  team                   Team                        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  aliases                TeamMemberAlias[]
+  sessionParticipants    SessionParticipant[]
+  drillPlayerFocus       PracticeDrillPlayerFocus[]
+  observationPlayerTags  ObservationPlayerTag[]
+  sessionStats           SessionPlayerStat[]
+  derivedStatLines       DerivedStatLine[]
+
+  @@index([teamId])
+}
+
+model TeamMemberAlias {
+  id              String   @id @default(uuid())
+  teamMemberId    String
+  alias           String
+  normalizedAlias String
+  createdAt       DateTime @default(now())
+
+  teamMember TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([teamMemberId, normalizedAlias])
+  @@index([teamMemberId])
+  @@index([normalizedAlias])
+}
+
+/// One coaching event: practice, game, skill work, etc.
+model Session {
+  id            String      @id @default(uuid())
+  type          SessionType
+  userId        String
+  teamId        String
+  startedAt     DateTime    @default(now())
+  notesSummary  String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team          Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  participants  SessionParticipant[]
+  observations  Observation[]
+  practicePlan  PracticePlan?
+  playerStats   SessionPlayerStat[]
+  derivedStatLines DerivedStatLine[]
+
+  @@index([userId])
+  @@index([teamId])
+  @@index([startedAt])
+}
+
+/// Who this session is about (subset for skill sessions; full roster auto-filled for team events)
+model SessionParticipant {
+  id           String @id @default(uuid())
+  sessionId    String
+  teamMemberId String
+
+  session    Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  teamMember TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, teamMemberId])
+  @@index([sessionId])
+  @@index([teamMemberId])
+}
+
+/// Pre-session intent: goals + drills (anchors for observations)
+model PracticePlan {
+  id              String     @id @default(uuid())
+  sessionId       String     @unique
+  title           String?
+  goals           Json       @default("[]")
+  userPrompt      String?
+  source          PlanSource @default(MANUAL)
+  lastGeneratedAt DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  session Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  drills  PracticeDrill[]
+
+  @@index([sessionId])
+}
+
+model PracticeDrill {
+  id              String   @id @default(uuid())
+  practicePlanId  String
+  sortOrder       Int
+  title           String
+  description     String?
+  execution       String?
+  durationMinutes Int?
+  focusTags       Json     @default("[]")
+
+  practicePlan PracticePlan                @relation(fields: [practicePlanId], references: [id], onDelete: Cascade)
+  playerFocus  PracticeDrillPlayerFocus[]
+  observations Observation[]
+
+  @@index([practicePlanId])
+  @@index([practicePlanId, sortOrder])
+}
+
+model PracticeDrillPlayerFocus {
+  drillId      String
+  teamMemberId String
+
+  drill      PracticeDrill @relation(fields: [drillId], references: [id], onDelete: Cascade)
+  teamMember TeamMember    @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+
+  @@id([drillId, teamMemberId])
+  @@index([teamMemberId])
+}
+
+model Observation {
+  id              String                   @id @default(uuid())
+  sessionId       String
+  drillId         String?
+  rawText         String
+  observationType ObservationType          @default(GENERAL)
+  sentiment       Sentiment?
+  extractedTags   Json?
+  scope           ObservationScope         @default(UNKNOWN)
+  taggingStatus   ObservationTaggingStatus @default(PENDING)
+  taggingError    String?
+  taggedAt        DateTime?
+  statStatus      ObservationStatStatus    @default(PENDING)
+  statError       String?
+  statProcessedAt DateTime?
+  statExtraction  Json?
+  recordedAt      DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  session          Session                      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  drill            PracticeDrill?               @relation(fields: [drillId], references: [id], onDelete: SetNull)
+  playerTags       ObservationPlayerTag[]
+  statAttributions ObservationStatAttribution[]
+  derivedStatLines DerivedStatLine[]
+  processingJobs   ObservationProcessingJob[]
+
+  @@index([sessionId])
+  @@index([drillId])
+  @@index([taggingStatus])
+  @@index([statStatus])
+}
+
+model ObservationPlayerTag {
+  id            String   @id @default(uuid())
+  observationId String
+  teamMemberId  String
+  confidence    Float?
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  observation Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  teamMember  TeamMember  @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([observationId, teamMemberId])
+  @@index([observationId])
+  @@index([teamMemberId])
+}
+
+model SessionPlayerStat {
+  id            String   @id @default(uuid())
+  sessionId     String
+  teamMemberId  String
+  points        Int      @default(0)
+  computedPoints Int     @default(0)
+  pointsLocked  Boolean  @default(false)
+  pointsManualOverride Int?
+  assists       Int      @default(0)
+  computedAssists Int    @default(0)
+  assistsLocked Boolean  @default(false)
+  assistsManualOverride Int?
+  rebounds      Int      @default(0)
+  computedRebounds Int   @default(0)
+  reboundsLocked Boolean @default(false)
+  reboundsManualOverride Int?
+  steals        Int      @default(0)
+  computedSteals Int     @default(0)
+  stealsLocked  Boolean  @default(false)
+  stealsManualOverride Int?
+  blocks        Int      @default(0)
+  computedBlocks Int     @default(0)
+  blocksLocked  Boolean  @default(false)
+  blocksManualOverride Int?
+  turnovers     Int      @default(0)
+  computedTurnovers Int  @default(0)
+  turnoversLocked Boolean @default(false)
+  turnoversManualOverride Int?
+  fouls         Int      @default(0)
+  computedFouls Int      @default(0)
+  foulsLocked   Boolean  @default(false)
+  foulsManualOverride Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  session       Session                     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  teamMember    TeamMember                  @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+  attributions  ObservationStatAttribution[]
+
+  @@unique([sessionId, teamMemberId])
+  @@index([sessionId])
+  @@index([teamMemberId])
+}
+
+model ObservationStatAttribution {
+  id                  String            @id @default(uuid())
+  observationId       String
+  sessionPlayerStatId String
+  metric              SessionStatMetric
+  delta               Int
+  confidence          Float?
+  createdAt           DateTime          @default(now())
+
+  observation       Observation       @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  sessionPlayerStat SessionPlayerStat @relation(fields: [sessionPlayerStatId], references: [id], onDelete: Cascade)
+
+  @@index([observationId])
+  @@index([sessionPlayerStatId])
+  @@index([metric])
+}
+
+model ObservationProcessingJob {
+  id            String                       @id @default(uuid())
+  observationId String
+  status        ObservationProcessingJobStatus @default(PENDING)
+  attempts      Int                          @default(0)
+  nextRunAt     DateTime                     @default(now())
+  leaseExpiresAt DateTime?
+  lastError     String?
+  payload       Json?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  observation Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRunAt])
+  @@index([observationId])
+}
+
+model DerivedStatLine {
+  id            String                @id @default(uuid())
+  sessionId     String
+  observationId String
+  teamMemberId  String?
+  playerRef     String?
+  evidenceText  String?
+  lineStart     Int?
+  lineEnd       Int?
+  confidence    Float?
+  points        Int                   @default(0)
+  assists       Int                   @default(0)
+  rebounds      Int                   @default(0)
+  steals        Int                   @default(0)
+  blocks        Int                   @default(0)
+  turnovers     Int                   @default(0)
+  fouls         Int                   @default(0)
+  status        DerivedStatLineStatus @default(PENDING_REVIEW)
+  reviewNote    String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  runId         String
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  observation Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  session     Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  teamMember  TeamMember? @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
+  reviewedBy  User?       @relation("DerivedStatLineReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, status])
+  @@index([observationId])
+  @@index([teamMemberId])
+  @@index([runId])
+}

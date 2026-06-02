@@ -1,0 +1,27 @@
+name: powerwill-api
+services:
+  - name: api
+    source_dir: apps/api
+    github:
+      branch: main
+      deploy_on_push: true
+    build_command: npm install && npm run build
+    run_command: npm run start
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: CLERK_PUBLISHABLE_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: CLERK_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: NODE_ENV
+        scope: RUN_TIME
+        value: production
+    http_port: 3036
+

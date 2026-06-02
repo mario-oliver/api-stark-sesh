@@ -1,0 +1,242 @@
+# API Development Rules
+
+## Architecture Pattern
+
+This API follows a clean architecture with:
+- **Routes**: Define endpoints and attach middleware
+- **Controllers**: Handle business logic
+- **Middleware**: Handle cross-cutting concerns (auth, validation, permissions)
+- **Schemas**: Zod schemas for validation (in `@powerwill/shared` package)
+
+## Validation Pattern
+
+### ✅ CORRECT: Use Zod schemas with preHandler middleware
+
+```typescript
+import { validate, validateParams, validateQuery } from '../middleware/validation'
+import { updateUserSchema, userIdParamSchema } from '@powerwill/shared'
+
+fastify.patch('/:id', {
+  preHandler: [
+    validateParams(userIdParamSchema),
+    validate(updateUserSchema)
+  ],
+  handler: async (request, reply) => {
+    return controller.updateUser(request as AuthenticatedRequest, reply)
+  }
+})
+```
+
+### ❌ INCORRECT: Do NOT use Fastify's schema option
+
+```typescript
+// BAD - Redundant schema definition
+fastify.patch('/:id', {
+  schema: {
+    body: { type: 'object', properties: { ... } },
+    params: { type: 'object', properties: { ... } }
+  },
+  handler: ...
+})
+```
+
+**Why?** We use Zod for validation because:
+- Single source of truth for validation logic
+- Type-safe schemas shared between frontend and backend
+- Better error messages and validation rules
+- Schemas live in `@powerwill/shared` package
+
+## Authentication Pattern
+
+### ✅ CORRECT: Use routeGroups plugin for auth
+
+Authentication is handled at the route group level in `app.ts`:
+
+```typescript
+// In app.ts
+await fastify.register(routeGroups, {
+  prefix: '/v1/users',
+  authLevel: 'required', // or 'optional' or 'none'
+  routes: usersRoutes
+})
+```
+
+The `routeGroups` plugin automatically applies authentication based on `authLevel`:
+- `'required'`: Adds `requireAuth` middleware to all routes in the group
+- `'optional'`: Adds `optionalAuth` middleware (sets user if token exists)
+- `'none'`: No authentication
+
+### ❌ INCORRECT: Do NOT add auth hooks in route files
+
+```typescript
+// BAD - Redundant auth hook
+export default async function usersRoutes(fastify: FastifyInstance) {
+  fastify.addHook('onRequest', requireAuth) // ❌ Don't do this
+  
+  fastify.get('/me', { handler: ... })
+}
+```
+
+**Why?** The `routeGroups` plugin already handles authentication for the entire route group. Adding it again is redundant and makes the code harder to maintain.
+
+## Route File Structure
+
+```typescript
+import { FastifyInstance, FastifyPluginOptions } from 'fastify'
+import { Controller } from '../controllers/controller'
+import { validate, validateParams, validateQuery } from '../middleware/validation'
+import { AuthenticatedRequest } from '../types/auth'
+import { schemaName } from '@powerwill/shared'
+
+export default async function routes(fastify: FastifyInstance, _options: FastifyPluginOptions) {
+  const controller = new Controller()
+
+  // Simple route - no validation needed
+  fastify.get('/', {
+    handler: async (request, reply) => {
+      return controller.list(request as AuthenticatedRequest, reply)
+    }
+  })
+
+  // Route with body validation
+  fastify.post('/', {
+    preHandler: validate(createSchema),
+    handler: async (request, reply) => {
+      return controller.create(request as AuthenticatedRequest, reply)
+    }
+  })
+
+  // Route with params and body validation
+  fastify.patch('/:id', {
+    preHandler: [
+      validateParams(idParamSchema),
+      validate(updateSchema)
+    ],
+    handler: async (request, reply) => {
+      return controller.update(request as AuthenticatedRequest, reply)
+    }
+  })
+
+  // Route with query validation
+  fastify.get('/', {
+    preHandler: validateQuery(listQuerySchema),
+    handler: async (request, reply) => {
+      return controller.list(request as AuthenticatedRequest, reply)
+    }
+  })
+}
+```
+
+## Controller Structure
+
+Controllers should:
+- Be pure business logic (no auth/validation logic)
+- Use `AuthenticatedRequest` type for authenticated routes
+- Use response helpers from `../utils/responseHelpers`
+- Import Prisma from `@powerwill/database`
+- Document which middleware is expected
+
+```typescript
+import { FastifyReply } from 'fastify'
+import { prisma } from '@powerwill/database'
+import { AuthenticatedRequest } from '../types/auth'
+import { sendSuccess, sendNotFound } from '../utils/responseHelpers'
+
+export class UsersController {
+  /**
+   * Get user profile
+   * Middleware: auth (via routeGroups)
+   */
+  async getProfile(request: AuthenticatedRequest, reply: FastifyReply) {
+    const user = await prisma.user.findUnique({
+      where: { id: request.user.id }
+    })
+
+    if (!user) {
+      return sendNotFound(reply, 'User not found')
+    }
+
+    return sendSuccess(reply, { user })
+  }
+
+  /**
+   * Update user
+   * Middleware: [validateParams(userIdParamSchema), validate(updateUserSchema)]
+   */
+  async updateUser(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id } = request.params as { id: string }
+    const data = request.body as Record<string, unknown>
+
+    const user = await prisma.user.update({
+      where: { id },
+      data
+    })
+
+    return sendSuccess(reply, { user })
+  }
+}
+```
+
+## Schema Organization
+
+- All Zod schemas live in `packages/shared/src/schemas/`
+- Organized by domain (e.g., `userSchemas.ts`, `goalsSchemas.ts`)
+- Export schemas and types from `packages/shared/src/schemas/index.ts`
+- Import from `@powerwill/shared` in API and frontend
+
+```typescript
+// In packages/shared/src/schemas/userSchemas.ts
+import { z } from 'zod'
+
+export const updateUserSchema = z.object({
+  firstName: z.string().min(1).max(50).optional(),
+  lastName: z.string().min(1).max(50).optional()
+})
+
+export type UpdateUser = z.infer<typeof updateUserSchema>
+
+// In API/frontend
+import { updateUserSchema, UpdateUser } from '@powerwill/shared'
+```
+
+## Response Helpers
+
+Always use response helpers for consistency:
+
+```typescript
+import {
+  sendSuccess,      // 200 with data
+  sendCreated,      // 201 with data
+  sendUpdated,      // 200 with data and message
+  sendNotFound,     // 404
+  sendError,        // 400
+  sendInternalError, // 500
+  sendPaginated     // 200 with pagination metadata
+} from '../utils/responseHelpers'
+```
+
+## Middleware
+
+Available middleware:
+- `requireAuth`: Requires valid Clerk token (applied by routeGroups)
+- `optionalAuth`: Sets user if token exists (applied by routeGroups)
+- `validate(schema)`: Validates request body with Zod schema
+- `validateParams(schema)`: Validates request params with Zod schema
+- `validateQuery(schema)`: Validates query string with Zod schema
+- `requireOwnership(resource)`: Checks if user owns the resource
+- `requireRole(...roles)`: Checks if user has one of the specified roles
+- `adminOnly`: Requires user to be an admin
+
+## Database Access
+
+- Import Prisma from the shared database package: `import { prisma } from '@powerwill/database'`
+- Never import from `../config/database` or `@prisma/client` directly
+- The database package provides a singleton Prisma client
+
+## Type Safety
+
+- Use `AuthenticatedRequest` type for routes requiring authentication
+- Cast request in handlers: `request as AuthenticatedRequest`
+- Controllers receive properly typed requests
+- Zod schemas provide automatic type inference
+
