@@ -3,7 +3,7 @@ import 'dotenv/config'
 const DEFAULT_UPLOAD_EXPIRES = 900
 const DEFAULT_VIEW_EXPIRES = 86_400
 
-export const MAX_DOG_PHOTO_BYTES = 2 * 1024 * 1024
+export const MAX_DOG_PHOTO_BYTES = 10 * 1024 * 1024
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim()
