@@ -1,4 +1,4 @@
-// Coaching OS — session-centric model: PracticePlan (drills) → Observations → (future) insights
+// Stark Health — voice-first dog PT care tracking
 
 generator client {
   provider = "prisma-client"
@@ -9,57 +9,53 @@ datasource db {
   provider = "postgresql"
 }
 
-enum SessionType {
-  TEAM_PRACTICE
-  SKILL_SESSION
-  GAME
-  TRYOUT
-  OTHER
+enum CareActionCategory {
+  STRETCH
+  STRENGTH
+  MOBILITY
+  WALK
+  MEDICATION
+  GENERAL_CARE
+  OBSERVATION_CHECKPOINT
 }
 
-enum PlanSource {
-  MANUAL
-  LLM
-  MIXED
+enum CareActionFrequency {
+  DAILY
+  EVERY_OTHER_DAY
+  WEEKLY
+  AS_NEEDED
 }
 
-enum ObservationType {
-  PLAYER_FEEDBACK
-  TEAM_PATTERN
-  EFFORT
-  TACTICAL
-  GENERAL
+enum CareActionTimeOfDay {
+  MORNING
+  EVENING
+  ANYTIME
 }
 
-enum Sentiment {
-  POSITIVE
-  NEGATIVE
-  NEUTRAL
-  MIXED
+enum DailyCareActionStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+  PARTIALLY_COMPLETED
+  UNCLEAR
 }
 
-enum ObservationScope {
-  TEAM_WIDE
-  PLAYER_SPECIFIC
-  MIXED
+enum Tolerance {
+  GOOD
+  OKAY
+  POOR
+  PAINFUL
   UNKNOWN
 }
 
-enum ObservationTaggingStatus {
+enum VoiceNoteProcessingStatus {
   PENDING
-  PROCESSING
-  COMPLETE
+  TRANSCRIBED
+  PROCESSED
   FAILED
 }
 
-enum ObservationStatStatus {
-  PENDING
-  PROCESSING
-  COMPLETE
-  FAILED
-}
-
-enum ObservationProcessingJobStatus {
+enum VoiceNoteJobStatus {
   PENDING
   RUNNING
   RETRY
@@ -67,21 +63,24 @@ enum ObservationProcessingJobStatus {
   FAILED
 }
 
-enum SessionStatMetric {
-  points
-  assists
-  rebounds
-  steals
-  blocks
-  turnovers
-  fouls
+enum HealthObservationType {
+  SLIPPING
+  LIMPING
+  WEAKNESS
+  STIFFNESS
+  PAIN
+  LOW_ENERGY
+  APPETITE
+  BATHROOM
+  MEDICATION
+  GENERAL_NOTE
 }
 
-enum DerivedStatLineStatus {
-  PENDING_REVIEW
-  APPROVED
-  REJECTED
-  EDITED
+enum ObservationSeverity {
+  MILD
+  MODERATE
+  SEVERE
+  UNKNOWN
 }
 
 model User {
@@ -92,319 +91,194 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions Session[]
-  teams    Team[]
-  reviewedDerivedStatLines DerivedStatLine[] @relation("DerivedStatLineReviewedBy")
+  dogMembers            DogMember[]
+  completedDailyActions DailyCareAction[] @relation("DailyCareActionCompletedBy")
+  voiceNotes            VoiceNote[]
+  healthObservations    HealthObservation[]
 
   @@index([id])
   @@index([email])
 }
 
-model Subscriptions {
-  id                   String   @id @default(uuid())
-  status               String?
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  userId               String   @unique
-  currentPeriodEnd     Int?
-  currentPeriodStart   Int?
-  cancelAtPeriodEnd    Boolean?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-}
-
-model Team {
+model Dog {
   id        String   @id @default(uuid())
-  name      String?
-  userId    String
+  name      String
+  breed     String?
+  age       Int?
+  notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  members  TeamMember[]
-  sessions Session[]
+  members           DogMember[]
+  carePlans         CarePlan[]
+  dailyCareLogs     DailyCareLog[]
+  voiceNotes        VoiceNote[]
+  healthObservations HealthObservation[]
 
+  @@index([name])
+}
+
+model DogMember {
+  id        String   @id @default(uuid())
+  dogId     String
+  userId    String
+  role      String?
+  createdAt DateTime @default(now())
+
+  dog  Dog  @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dogId, userId])
+  @@index([dogId])
   @@index([userId])
 }
 
-model TeamMember {
-  id              String    @id @default(uuid())
-  teamId          String
-  number          String    @default("")
-  name            String    @default("")
-  isActive        Boolean   @default(true)
-  deactivatedAt   DateTime?
-  createdAt       DateTime  @default(now())
+model CarePlan {
+  id        String   @id @default(uuid())
+  dogId     String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  team                   Team                        @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  aliases                TeamMemberAlias[]
-  sessionParticipants    SessionParticipant[]
-  drillPlayerFocus       PracticeDrillPlayerFocus[]
-  observationPlayerTags  ObservationPlayerTag[]
-  sessionStats           SessionPlayerStat[]
-  derivedStatLines       DerivedStatLine[]
+  dog     Dog          @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  actions CareAction[]
 
-  @@index([teamId])
+  @@index([dogId])
+  @@index([dogId, isActive])
 }
 
-model TeamMemberAlias {
-  id              String   @id @default(uuid())
-  teamMemberId    String
-  alias           String
-  normalizedAlias String
-  createdAt       DateTime @default(now())
+model CareAction {
+  id                     String              @id @default(uuid())
+  carePlanId             String
+  name                   String
+  description            String?
+  category               CareActionCategory
+  frequency              CareActionFrequency @default(DAILY)
+  timeOfDay              CareActionTimeOfDay?
+  targetReps             Int?
+  targetDurationSeconds  Int?
+  instructions           String?
+  sortOrder              Int                 @default(0)
+  isActive               Boolean             @default(true)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
 
-  teamMember TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+  carePlan          CarePlan          @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+  dailyCareActions  DailyCareAction[]
 
-  @@unique([teamMemberId, normalizedAlias])
-  @@index([teamMemberId])
-  @@index([normalizedAlias])
+  @@index([carePlanId])
+  @@index([carePlanId, isActive, sortOrder])
 }
 
-/// One coaching event: practice, game, skill work, etc.
-model Session {
-  id            String      @id @default(uuid())
-  type          SessionType
-  userId        String
-  teamId        String
-  startedAt     DateTime    @default(now())
-  notesSummary  String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+model DailyCareLog {
+  id        String   @id @default(uuid())
+  dogId     String
+  date      DateTime @db.Date
+  summary   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team          Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  participants  SessionParticipant[]
-  observations  Observation[]
-  practicePlan  PracticePlan?
-  playerStats   SessionPlayerStat[]
-  derivedStatLines DerivedStatLine[]
+  dog                Dog                 @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  dailyCareActions   DailyCareAction[]
+  voiceNotes         VoiceNote[]
+  healthObservations HealthObservation[]
 
+  @@unique([dogId, date])
+  @@index([dogId])
+  @@index([date])
+}
+
+model DailyCareAction {
+  id                String                @id @default(uuid())
+  dailyCareLogId    String
+  careActionId      String
+  nameSnapshot      String
+  categorySnapshot  CareActionCategory
+  status            DailyCareActionStatus @default(PENDING)
+  completedAt       DateTime?
+  completedByUserId String?
+  notes             String?
+  tolerance         Tolerance?
+  issueObserved     Boolean               @default(false)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  dailyCareLog DailyCareLog @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
+  careAction   CareAction   @relation(fields: [careActionId], references: [id], onDelete: Cascade)
+  completedBy  User?        @relation("DailyCareActionCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([dailyCareLogId, careActionId])
+  @@index([dailyCareLogId])
+  @@index([careActionId])
+  @@index([status])
+}
+
+model VoiceNote {
+  id               String                    @id @default(uuid())
+  dogId            String
+  dailyCareLogId   String
+  userId           String
+  audioUrl         String?
+  transcript       String                    @default("")
+  processingStatus VoiceNoteProcessingStatus @default(PENDING)
+  extraction       Json?
+  caregiverNote    String?
+  needsReview      Boolean                   @default(false)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  dog                Dog                      @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  dailyCareLog       DailyCareLog             @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  healthObservations HealthObservation[]
+  processingJobs     VoiceNoteProcessingJob[]
+
+  @@index([dogId])
+  @@index([dailyCareLogId])
   @@index([userId])
-  @@index([teamId])
-  @@index([startedAt])
+  @@index([processingStatus])
 }
 
-/// Who this session is about (subset for skill sessions; full roster auto-filled for team events)
-model SessionParticipant {
-  id           String @id @default(uuid())
-  sessionId    String
-  teamMemberId String
-
-  session    Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  teamMember TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
-
-  @@unique([sessionId, teamMemberId])
-  @@index([sessionId])
-  @@index([teamMemberId])
-}
-
-/// Pre-session intent: goals + drills (anchors for observations)
-model PracticePlan {
-  id              String     @id @default(uuid())
-  sessionId       String     @unique
-  title           String?
-  goals           Json       @default("[]")
-  userPrompt      String?
-  source          PlanSource @default(MANUAL)
-  lastGeneratedAt DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-
-  session Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  drills  PracticeDrill[]
-
-  @@index([sessionId])
-}
-
-model PracticeDrill {
-  id              String   @id @default(uuid())
-  practicePlanId  String
-  sortOrder       Int
-  title           String
-  description     String?
-  execution       String?
-  durationMinutes Int?
-  focusTags       Json     @default("[]")
-
-  practicePlan PracticePlan                @relation(fields: [practicePlanId], references: [id], onDelete: Cascade)
-  playerFocus  PracticeDrillPlayerFocus[]
-  observations Observation[]
-
-  @@index([practicePlanId])
-  @@index([practicePlanId, sortOrder])
-}
-
-model PracticeDrillPlayerFocus {
-  drillId      String
-  teamMemberId String
-
-  drill      PracticeDrill @relation(fields: [drillId], references: [id], onDelete: Cascade)
-  teamMember TeamMember    @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
-
-  @@id([drillId, teamMemberId])
-  @@index([teamMemberId])
-}
-
-model Observation {
-  id              String                   @id @default(uuid())
-  sessionId       String
-  drillId         String?
-  rawText         String
-  observationType ObservationType          @default(GENERAL)
-  sentiment       Sentiment?
-  extractedTags   Json?
-  scope           ObservationScope         @default(UNKNOWN)
-  taggingStatus   ObservationTaggingStatus @default(PENDING)
-  taggingError    String?
-  taggedAt        DateTime?
-  statStatus      ObservationStatStatus    @default(PENDING)
-  statError       String?
-  statProcessedAt DateTime?
-  statExtraction  Json?
-  recordedAt      DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
-
-  session          Session                      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  drill            PracticeDrill?               @relation(fields: [drillId], references: [id], onDelete: SetNull)
-  playerTags       ObservationPlayerTag[]
-  statAttributions ObservationStatAttribution[]
-  derivedStatLines DerivedStatLine[]
-  processingJobs   ObservationProcessingJob[]
-
-  @@index([sessionId])
-  @@index([drillId])
-  @@index([taggingStatus])
-  @@index([statStatus])
-}
-
-model ObservationPlayerTag {
-  id            String   @id @default(uuid())
-  observationId String
-  teamMemberId  String
-  confidence    Float?
-  reason        String?
-  createdAt     DateTime @default(now())
-
-  observation Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
-  teamMember  TeamMember  @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
-
-  @@unique([observationId, teamMemberId])
-  @@index([observationId])
-  @@index([teamMemberId])
-}
-
-model SessionPlayerStat {
-  id            String   @id @default(uuid())
-  sessionId     String
-  teamMemberId  String
-  points        Int      @default(0)
-  computedPoints Int     @default(0)
-  pointsLocked  Boolean  @default(false)
-  pointsManualOverride Int?
-  assists       Int      @default(0)
-  computedAssists Int    @default(0)
-  assistsLocked Boolean  @default(false)
-  assistsManualOverride Int?
-  rebounds      Int      @default(0)
-  computedRebounds Int   @default(0)
-  reboundsLocked Boolean @default(false)
-  reboundsManualOverride Int?
-  steals        Int      @default(0)
-  computedSteals Int     @default(0)
-  stealsLocked  Boolean  @default(false)
-  stealsManualOverride Int?
-  blocks        Int      @default(0)
-  computedBlocks Int     @default(0)
-  blocksLocked  Boolean  @default(false)
-  blocksManualOverride Int?
-  turnovers     Int      @default(0)
-  computedTurnovers Int  @default(0)
-  turnoversLocked Boolean @default(false)
-  turnoversManualOverride Int?
-  fouls         Int      @default(0)
-  computedFouls Int      @default(0)
-  foulsLocked   Boolean  @default(false)
-  foulsManualOverride Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  session       Session                     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  teamMember    TeamMember                  @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
-  attributions  ObservationStatAttribution[]
-
-  @@unique([sessionId, teamMemberId])
-  @@index([sessionId])
-  @@index([teamMemberId])
-}
-
-model ObservationStatAttribution {
-  id                  String            @id @default(uuid())
-  observationId       String
-  sessionPlayerStatId String
-  metric              SessionStatMetric
-  delta               Int
-  confidence          Float?
-  createdAt           DateTime          @default(now())
-
-  observation       Observation       @relation(fields: [observationId], references: [id], onDelete: Cascade)
-  sessionPlayerStat SessionPlayerStat @relation(fields: [sessionPlayerStatId], references: [id], onDelete: Cascade)
-
-  @@index([observationId])
-  @@index([sessionPlayerStatId])
-  @@index([metric])
-}
-
-model ObservationProcessingJob {
-  id            String                       @id @default(uuid())
-  observationId String
-  status        ObservationProcessingJobStatus @default(PENDING)
-  attempts      Int                          @default(0)
-  nextRunAt     DateTime                     @default(now())
+model VoiceNoteProcessingJob {
+  id             String             @id @default(uuid())
+  voiceNoteId    String
+  status         VoiceNoteJobStatus @default(PENDING)
+  attempts       Int                @default(0)
+  nextRunAt      DateTime           @default(now())
   leaseExpiresAt DateTime?
-  lastError     String?
-  payload       Json?
-  createdAt     DateTime                     @default(now())
-  updatedAt     DateTime                     @updatedAt
+  lastError      String?
+  payload        Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
-  observation Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  voiceNote VoiceNote @relation(fields: [voiceNoteId], references: [id], onDelete: Cascade)
 
   @@index([status, nextRunAt])
-  @@index([observationId])
+  @@index([voiceNoteId])
 }
 
-model DerivedStatLine {
-  id            String                @id @default(uuid())
-  sessionId     String
-  observationId String
-  teamMemberId  String?
-  playerRef     String?
-  evidenceText  String?
-  lineStart     Int?
-  lineEnd       Int?
-  confidence    Float?
-  points        Int                   @default(0)
-  assists       Int                   @default(0)
-  rebounds      Int                   @default(0)
-  steals        Int                   @default(0)
-  blocks        Int                   @default(0)
-  turnovers     Int                   @default(0)
-  fouls         Int                   @default(0)
-  status        DerivedStatLineStatus @default(PENDING_REVIEW)
-  reviewNote    String?
-  reviewedById  String?
-  reviewedAt    DateTime?
-  runId         String
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+model HealthObservation {
+  id             String                @id @default(uuid())
+  dogId          String
+  dailyCareLogId String
+  userId         String
+  voiceNoteId    String?
+  type           HealthObservationType
+  severity       ObservationSeverity?
+  bodyArea       String?
+  note           String
+  observedAt     DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
-  observation Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
-  session     Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  teamMember  TeamMember? @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
-  reviewedBy  User?       @relation("DerivedStatLineReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  dog          Dog          @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  dailyCareLog DailyCareLog @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voiceNote    VoiceNote?   @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
 
-  @@index([sessionId, status])
-  @@index([observationId])
-  @@index([teamMemberId])
-  @@index([runId])
+  @@index([dogId])
+  @@index([dailyCareLogId])
+  @@index([userId])
+  @@index([voiceNoteId])
 }

@@ -1,10 +1,10 @@
 import OpenAI, { toFile } from 'openai'
 
 const defaultPrompt =
-  'This transcript is about basketball. It may include coaching terms, plays, sets, player positions, and game strategy.'
+  'This transcript is a caregiver voice update about a dog physical therapy and mobility care session. It may include stretch names, exercises, tolerance, pain, stiffness, walks, and health observations.'
 
 /**
- * Transcribe audio using OpenAI's speech-to-text API (aligned with film-sesh lib/speech-to-text).
+ * Transcribe audio using OpenAI's speech-to-text API.
  * Uses gpt-4o-transcribe by default; accepts a Buffer from Fastify multipart and converts to File for the SDK.
  */
 export async function transcribe(

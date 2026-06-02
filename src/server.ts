@@ -2,16 +2,16 @@ import type { FastifyInstance } from 'fastify'
 import Fastify from './app.js'
 import config from './config/config.js'
 import {
-  startObservationProcessingWorker,
-  stopObservationProcessingWorker
-} from './services/observationProcessing/queue.js'
+  startVoiceNoteProcessingWorker,
+  stopVoiceNoteProcessingWorker
+} from './services/voiceNoteProcessing/queue.js'
 
 let fastify: FastifyInstance
 let isShuttingDown = false
 
 const start = async () => {
   fastify = await Fastify()
-  startObservationProcessingWorker()
+  startVoiceNoteProcessingWorker()
 
   try {
     await fastify.listen({
@@ -44,7 +44,7 @@ const gracefulShutdown = async (signal: string) => {
 
   try {
     fastify.log.info(`Received ${signal}. Starting graceful shutdown...`)
-    stopObservationProcessingWorker()
+    stopVoiceNoteProcessingWorker()
     await fastify.close()
     fastify.log.info('Server closed successfully')
     clearTimeout(forceExitTimer)
