@@ -11,6 +11,8 @@ import {
 } from '../utils/responseHelpers.js'
 import { resolveTodayLog } from '../services/dailyCare/resolveTodayLog.js'
 import { todayUtcDateString } from '../services/dailyCare/dateUtils.js'
+import { createDogWithDefaultPlan } from '../services/carePlans/createDogWithDefaultPlan.js'
+import { DEFAULT_MOBILITY_STRENGTH_PLAN_NAME } from '../services/carePlans/defaultMobilityStrengthPlan.js'
 
 export class DogsController {
   async listDogs(request: AuthenticatedRequest, reply: FastifyReply) {
@@ -32,7 +34,7 @@ export class DogsController {
       const stark = await prisma.dog.findFirst({ where: { name: 'Stark' } })
       if (stark) {
         const memberCount = await prisma.dogMember.count({ where: { dogId: stark.id } })
-        if (memberCount === 0 || process.env.STARK_AUTO_ATTACH === 'true') {
+        if (process.env.STARK_AUTO_ATTACH === 'true') {
           await prisma.dogMember.upsert({
             where: { dogId_userId: { dogId: stark.id, userId: request.user.id } },
             create: { dogId: stark.id, userId: request.user.id, role: 'caregiver' },
@@ -60,6 +62,57 @@ export class DogsController {
         role: m.role
       }))
     )
+  }
+
+  async createDog(request: AuthenticatedRequest, reply: FastifyReply) {
+    await ensureUserExists(request)
+    const body = request.body as {
+      name: string
+      breed?: string | null
+      age?: number | null
+      photoUrl?: string | null
+      notes?: string | null
+    }
+
+    const dog = await createDogWithDefaultPlan(request.user.id, body)
+    return sendCreated(
+      reply,
+      {
+        ...dog,
+        role: 'caregiver',
+        defaultCarePlan: DEFAULT_MOBILITY_STRENGTH_PLAN_NAME
+      },
+      'Dog created with default mobility & strength routine'
+    )
+  }
+
+  async updateDog(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id } = request.params as { id: string }
+    const body = request.body as {
+      name?: string
+      breed?: string | null
+      age?: number | null
+      photoUrl?: string | null
+      notes?: string | null
+    }
+
+    const member = await assertDogMemberAccess(id, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    const dog = await prisma.dog.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined && { name: body.name }),
+        ...(body.breed !== undefined && { breed: body.breed }),
+        ...(body.age !== undefined && { age: body.age }),
+        ...(body.photoUrl !== undefined && { photoUrl: body.photoUrl }),
+        ...(body.notes !== undefined && { notes: body.notes })
+      }
+    })
+
+    return sendSuccess(reply, { ...dog, role: member.role })
   }
 
   async getDog(request: AuthenticatedRequest, reply: FastifyReply) {

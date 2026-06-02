@@ -1,57 +1,10 @@
 import 'dotenv/config'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '../src/generated/client.js'
+import { DEFAULT_MOBILITY_STRENGTH_ACTIONS } from '../src/services/carePlans/defaultMobilityStrengthPlan.js'
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
-
-const CARE_ACTIONS = [
-  {
-    name: 'Morning stretch routine',
-    description: 'Morning hip and mobility stretches',
-    category: 'STRETCH' as const,
-    frequency: 'DAILY' as const,
-    timeOfDay: 'MORNING' as const,
-    sortOrder: 1,
-    instructions: 'Gentle hip stretches in the morning.'
-  },
-  {
-    name: 'Evening stretch routine',
-    description: 'Evening hip and mobility stretches',
-    category: 'STRETCH' as const,
-    frequency: 'DAILY' as const,
-    timeOfDay: 'EVENING' as const,
-    sortOrder: 2,
-    instructions: 'Gentle hip stretches in the evening.'
-  },
-  {
-    name: 'Assisted strength workout',
-    description: 'Assisted sit-to-stand and strength exercises',
-    category: 'STRENGTH' as const,
-    frequency: 'EVERY_OTHER_DAY' as const,
-    timeOfDay: 'EVENING' as const,
-    sortOrder: 3,
-    instructions: 'Assisted sit-to-stand reps as tolerated.'
-  },
-  {
-    name: 'Short controlled walk',
-    description: 'Short controlled walk for mobility',
-    category: 'MOBILITY' as const,
-    frequency: 'DAILY' as const,
-    timeOfDay: 'ANYTIME' as const,
-    sortOrder: 4,
-    instructions: 'Short controlled walk on even surfaces.'
-  },
-  {
-    name: 'Mobility/pain check',
-    description: 'Daily mobility and pain tolerance checkpoint',
-    category: 'OBSERVATION_CHECKPOINT' as const,
-    frequency: 'DAILY' as const,
-    timeOfDay: 'ANYTIME' as const,
-    sortOrder: 5,
-    instructions: 'Note stiffness, pain, and mobility during the day.'
-  }
-]
 
 async function main() {
   const caregiverEmails = (process.env.SEED_CAREGIVER_EMAILS ?? '')
@@ -86,7 +39,7 @@ async function main() {
         name: 'Stark PT Plan',
         isActive: true,
         actions: {
-          create: CARE_ACTIONS
+          create: DEFAULT_MOBILITY_STRENGTH_ACTIONS
         }
       }
     })
@@ -95,7 +48,7 @@ async function main() {
     const existingCount = await prisma.careAction.count({ where: { carePlanId: plan.id } })
     if (existingCount === 0) {
       await prisma.careAction.createMany({
-        data: CARE_ACTIONS.map(a => ({ ...a, carePlanId: plan!.id }))
+        data: DEFAULT_MOBILITY_STRENGTH_ACTIONS.map(a => ({ ...a, carePlanId: plan!.id }))
       })
       console.log('Added care actions to existing plan')
     }

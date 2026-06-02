@@ -105,6 +105,7 @@ model Dog {
   name      String
   breed     String?
   age       Int?
+  photoUrl  String?
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

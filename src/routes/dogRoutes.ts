@@ -6,6 +6,7 @@ import { validate, validateParams, validateQuery } from '../middleware/validatio
 import type { AuthenticatedRequest } from '../types/auth.js'
 import {
   addDogMemberSchema,
+  createDogSchema,
   createObservationSchema,
   dogActionIdParamSchema,
   dogIdParamSchema,
@@ -14,6 +15,7 @@ import {
   historyQuerySchema,
   todayQuerySchema,
   updateDailyActionSchema,
+  updateDogSchema,
   updateObservationSchema
 } from '../schemas/dogSchemas.js'
 
@@ -29,9 +31,19 @@ export default async function dogRoutes(
     handler: async (request, reply) => dogs.listDogs(request as AuthenticatedRequest, reply)
   })
 
+  fastify.post('/', {
+    preHandler: validate(createDogSchema),
+    handler: async (request, reply) => dogs.createDog(request as AuthenticatedRequest, reply)
+  })
+
   fastify.get('/:id', {
     preHandler: validateParams(dogIdParamSchema),
     handler: async (request, reply) => dogs.getDog(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.patch('/:id', {
+    preHandler: [validateParams(dogIdParamSchema), validate(updateDogSchema)],
+    handler: async (request, reply) => dogs.updateDog(request as AuthenticatedRequest, reply)
   })
 
   fastify.get('/:id/today', {

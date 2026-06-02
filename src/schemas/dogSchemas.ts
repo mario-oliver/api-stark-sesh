@@ -1,5 +1,34 @@
 import { z } from 'zod'
 
+const photoUrlSchema = z
+  .string()
+  .max(600_000)
+  .refine(
+    value =>
+      value.startsWith('https://') ||
+      value.startsWith('http://') ||
+      value.startsWith('data:image/'),
+    { message: 'Photo must be an http(s) URL or image data URL' }
+  )
+  .optional()
+  .nullable()
+
+export const createDogSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  breed: z.string().trim().max(100).optional().nullable(),
+  age: z.coerce.number().int().min(0).max(30).optional().nullable(),
+  photoUrl: photoUrlSchema,
+  notes: z.string().trim().max(2000).optional().nullable()
+})
+
+export const updateDogSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  breed: z.string().trim().max(100).optional().nullable(),
+  age: z.coerce.number().int().min(0).max(30).optional().nullable(),
+  photoUrl: photoUrlSchema,
+  notes: z.string().trim().max(2000).optional().nullable()
+})
+
 export const dogIdParamSchema = z.object({
   id: z.string().uuid()
 })
