@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '../src/generated/client.js'
+import { generateShareCode } from '../src/lib/shareCode.js'
 import { DEFAULT_MOBILITY_STRENGTH_ACTIONS } from '../src/services/carePlans/defaultMobilityStrengthPlan.js'
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
@@ -20,7 +21,8 @@ async function main() {
         name: 'Stark',
         breed: null,
         age: null,
-        notes: 'Primary care dog for Stark Health MVP.'
+        notes: 'Primary care dog for Stark Health MVP.',
+        shareCode: generateShareCode()
       }
     })
     console.log('Created dog:', stark.name, stark.id)

@@ -98,3 +98,62 @@ export const historyQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20)
 })
+
+export const joinByShareCodeSchema = z.object({
+  shareCode: z.string().trim().min(1).max(20)
+})
+
+export const joinPreviewQuerySchema = z.object({
+  code: z.string().trim().min(1).max(20)
+})
+
+const careActionCategorySchema = z.enum([
+  'STRETCH',
+  'STRENGTH',
+  'MOBILITY',
+  'WALK',
+  'MEDICATION',
+  'GENERAL_CARE',
+  'OBSERVATION_CHECKPOINT'
+])
+
+const careActionFrequencySchema = z.enum(['DAILY', 'EVERY_OTHER_DAY', 'WEEKLY', 'AS_NEEDED'])
+
+const careActionTimeOfDaySchema = z.enum(['MORNING', 'EVENING', 'ANYTIME'])
+
+export const updateCarePlanSchema = z.object({
+  name: z.string().trim().min(1).max(200)
+})
+
+export const createCareActionSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(2000).optional().nullable(),
+  category: careActionCategorySchema,
+  frequency: careActionFrequencySchema,
+  timeOfDay: careActionTimeOfDaySchema.optional().nullable(),
+  targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
+  targetDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  instructions: z.string().trim().max(2000).optional().nullable(),
+  sortOrder: z.coerce.number().int().min(0).optional()
+})
+
+export const updateCareActionSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(2000).optional().nullable(),
+  category: careActionCategorySchema.optional(),
+  frequency: careActionFrequencySchema.optional(),
+  timeOfDay: careActionTimeOfDaySchema.optional().nullable(),
+  targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
+  targetDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  instructions: z.string().trim().max(2000).optional().nullable(),
+  sortOrder: z.coerce.number().int().min(0).optional()
+})
+
+export const dogCareActionIdParamSchema = z.object({
+  id: z.string().uuid(),
+  actionId: z.string().uuid()
+})
+
+export const calendarQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/)
+})

@@ -1,27 +1,6 @@
-import type { CareActionFrequency } from '../../generated/client.js'
 import { prisma } from '../../lib/prisma.js'
-import { daysBetweenUtc, formatCalendarDate, parseCalendarDate } from './dateUtils.js'
-
-function actionAppliesOnDate(
-  frequency: CareActionFrequency,
-  planCreatedAt: Date,
-  logDate: Date
-): boolean {
-  switch (frequency) {
-    case 'DAILY':
-      return true
-    case 'EVERY_OTHER_DAY': {
-      const dayIndex = daysBetweenUtc(planCreatedAt, logDate)
-      return dayIndex % 2 === 0
-    }
-    case 'WEEKLY':
-      return daysBetweenUtc(planCreatedAt, logDate) % 7 === 0
-    case 'AS_NEEDED':
-      return true
-    default:
-      return true
-  }
-}
+import { actionAppliesOnDate } from './actionAppliesOnDate.js'
+import { formatCalendarDate, parseCalendarDate } from './dateUtils.js'
 
 export async function resolveTodayLog(dogId: string, dateInput: string) {
   const logDate = parseCalendarDate(dateInput)

@@ -107,6 +107,7 @@ model Dog {
   age       Int?
   photoKey  String?
   notes     String?
+  shareCode String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

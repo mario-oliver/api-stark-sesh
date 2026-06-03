@@ -16,6 +16,7 @@ import { todayUtcDateString } from '../services/dailyCare/dateUtils.js'
 import { createDogWithDefaultPlan } from '../services/carePlans/createDogWithDefaultPlan.js'
 import { DEFAULT_MOBILITY_STRENGTH_PLAN_NAME } from '../services/carePlans/defaultMobilityStrengthPlan.js'
 import { assertPhotoKeyOwnedByUser } from '../services/s3/dogPhotos.js'
+import { normalizeShareCode } from '../lib/shareCode.js'
 
 function validatePhotoKeyForUser(photoKey: string | null | undefined, userId: string) {
   if (photoKey == null || photoKey === '') {
@@ -146,8 +147,52 @@ export class DogsController {
       return sendNotFound(reply, 'Dog not found')
     }
     const member = await assertDogMemberAccess(id, request.user.id)
-    const serialized = await serializeDog(dog, { role: member?.role ?? undefined })
+    const serialized = await serializeDog(dog, {
+      role: member?.role ?? undefined,
+      includeShareCode: true
+    })
     return sendSuccess(reply, serialized)
+  }
+
+  async previewJoin(request: AuthenticatedRequest, reply: FastifyReply) {
+    const query = request.query as { code: string }
+    const shareCode = normalizeShareCode(query.code)
+
+    const dog = await prisma.dog.findUnique({ where: { shareCode } })
+    if (!dog) {
+      return sendNotFound(reply, 'Invalid share code')
+    }
+
+    const serialized = await serializeDog(dog)
+    return sendSuccess(reply, {
+      id: dog.id,
+      name: serialized.name,
+      breed: serialized.breed,
+      photoUrl: serialized.photoUrl
+    })
+  }
+
+  async joinByShareCode(request: AuthenticatedRequest, reply: FastifyReply) {
+    await ensureUserExists(request)
+    const body = request.body as { shareCode: string }
+    const shareCode = normalizeShareCode(body.shareCode)
+
+    const dog = await prisma.dog.findUnique({ where: { shareCode } })
+    if (!dog) {
+      return sendNotFound(reply, 'Invalid share code')
+    }
+
+    const membership = await prisma.dogMember.upsert({
+      where: { dogId_userId: { dogId: dog.id, userId: request.user.id } },
+      create: { dogId: dog.id, userId: request.user.id, role: 'caregiver' },
+      update: {}
+    })
+
+    const serialized = await serializeDog(dog, {
+      role: membership.role ?? undefined,
+      includeShareCode: true
+    })
+    return sendSuccess(reply, serialized, 200, 'Joined care log')
   }
 
   async getToday(request: AuthenticatedRequest, reply: FastifyReply) {
