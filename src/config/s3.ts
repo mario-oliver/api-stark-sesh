@@ -4,6 +4,8 @@ const DEFAULT_UPLOAD_EXPIRES = 900
 const DEFAULT_VIEW_EXPIRES = 86_400
 
 export const MAX_DOG_PHOTO_BYTES = 10 * 1024 * 1024
+export const MAX_CARE_STEP_IMAGE_BYTES = 10 * 1024 * 1024
+export const MAX_CARE_STEP_VIDEO_BYTES = 25 * 1024 * 1024
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim()
@@ -31,6 +33,10 @@ export function isS3Ready(): boolean {
 
 export function getDogPhotoPrefix(): string {
   return (process.env.S3_DOG_PHOTO_PREFIX || 'dog-photos').replace(/^\/+|\/+$/g, '')
+}
+
+export function getCareStepMediaPrefix(): string {
+  return (process.env.S3_CARE_STEP_MEDIA_PREFIX || 'care-step-media').replace(/^\/+|\/+$/g, '')
 }
 
 export function getS3Config() {

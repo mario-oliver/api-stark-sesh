@@ -10,6 +10,11 @@ import {
   updateCarePlanName
 } from '../services/carePlans/carePlanService.js'
 import {
+  createCareActionStep,
+  deactivateCareActionStep,
+  updateCareActionStep
+} from '../services/carePlans/careActionStepService.js'
+import {
   sendForbidden,
   sendNotFound,
   sendSuccess,
@@ -99,6 +104,67 @@ export class CarePlansController {
       return sendUpdated(reply, action)
     } catch {
       return sendNotFound(reply, 'Care action not found')
+    }
+  }
+
+  async createActionStep(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id: dogId, actionId } = request.params as { id: string; actionId: string }
+    const body = request.body as Parameters<typeof createCareActionStep>[2]
+
+    const member = await assertDogMemberAccess(dogId, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    try {
+      const step = await createCareActionStep(dogId, actionId, body, request.user.id)
+      return sendCreated(reply, step, 'Movement created')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Care action not found'
+      return sendNotFound(reply, message)
+    }
+  }
+
+  async updateActionStep(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id: dogId, actionId, stepId } = request.params as {
+      id: string
+      actionId: string
+      stepId: string
+    }
+    const body = request.body as Parameters<typeof updateCareActionStep>[3]
+
+    const member = await assertDogMemberAccess(dogId, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    try {
+      const step = await updateCareActionStep(dogId, actionId, stepId, body, request.user.id)
+      return sendUpdated(reply, step)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Movement not found'
+      return sendNotFound(reply, message)
+    }
+  }
+
+  async deactivateActionStep(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id: dogId, actionId, stepId } = request.params as {
+      id: string
+      actionId: string
+      stepId: string
+    }
+
+    const member = await assertDogMemberAccess(dogId, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    try {
+      const step = await deactivateCareActionStep(dogId, actionId, stepId)
+      return sendUpdated(reply, step)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Movement not found'
+      return sendNotFound(reply, message)
     }
   }
 

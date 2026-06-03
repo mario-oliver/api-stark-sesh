@@ -1,6 +1,29 @@
 import { prisma } from '../../lib/prisma.js'
 import { actionAppliesOnDate } from './actionAppliesOnDate.js'
 import { formatCalendarDate, parseCalendarDate } from './dateUtils.js'
+import { syncDailyCareActionSteps } from './syncDailyCareActionSteps.js'
+import { serializeDailyCareAction } from './serializeDailyCare.js'
+
+const dailyActionInclude = {
+  orderBy: { createdAt: 'asc' as const },
+  include: {
+    completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+    steps: {
+      orderBy: { createdAt: 'asc' as const },
+      include: {
+        completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+        careActionStep: {
+          select: {
+            description: true,
+            instructions: true,
+            mediaKey: true,
+            mediaContentType: true
+          }
+        }
+      }
+    }
+  }
+}
 
 export async function resolveTodayLog(dogId: string, dateInput: string) {
   const logDate = parseCalendarDate(dateInput)
@@ -41,17 +64,40 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
 
     const toCreate = applicable.filter(a => !existingIds.has(a.id))
     if (toCreate.length > 0) {
-      await prisma.dailyCareAction.createMany({
-        data: toCreate.map(a => ({
-          dailyCareLogId: dailyLog!.id,
-          careActionId: a.id,
-          nameSnapshot: a.name,
-          categorySnapshot: a.category,
-          status: 'PENDING' as const
-        }))
-      })
+      const created = await prisma.$transaction(
+        toCreate.map(a =>
+          prisma.dailyCareAction.create({
+            data: {
+              dailyCareLogId: dailyLog!.id,
+              careActionId: a.id,
+              nameSnapshot: a.name,
+              categorySnapshot: a.category,
+              status: 'PENDING'
+            }
+          })
+        )
+      )
+
+      for (const dailyAction of created) {
+        const templateSteps = await prisma.careActionStep.findMany({
+          where: { careActionId: dailyAction.careActionId, isActive: true },
+          orderBy: { sortOrder: 'asc' }
+        })
+        if (templateSteps.length > 0) {
+          await prisma.dailyCareActionStep.createMany({
+            data: templateSteps.map(step => ({
+              dailyCareActionId: dailyAction.id,
+              careActionStepId: step.id,
+              nameSnapshot: step.name,
+              status: 'PENDING' as const
+            }))
+          })
+        }
+      }
     }
   }
+
+  await syncDailyCareActionSteps(dailyLog.id)
 
   return loadTodayPayload(dogId, dailyLog.id)
 }
@@ -60,13 +106,7 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
   const log = await prisma.dailyCareLog.findUniqueOrThrow({
     where: { id: dailyCareLogId },
     include: {
-      dailyCareActions: {
-        orderBy: { createdAt: 'asc' },
-        include: {
-          careAction: true,
-          completedBy: { select: { id: true, email: true, firstName: true, lastName: true } }
-        }
-      },
+      dailyCareActions: dailyActionInclude,
       voiceNotes: {
         orderBy: { createdAt: 'desc' },
         include: {
@@ -83,14 +123,28 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
   })
 
   const dog = await prisma.dog.findUniqueOrThrow({ where: { id: dogId } })
+  const dailyCareActions = await Promise.all(log.dailyCareActions.map(serializeDailyCareAction))
 
-  const completed = log.dailyCareActions.filter(a => a.status === 'COMPLETED').length
-  const total = log.dailyCareActions.length
+  const completed = dailyCareActions.filter(a => a.status === 'COMPLETED').length
+  const total = dailyCareActions.length
 
   return {
     dog,
     date: formatCalendarDate(log.date),
-    dailyLog: log,
+    dailyLog: {
+      id: log.id,
+      summary: log.summary,
+      dailyCareActions,
+      voiceNotes: log.voiceNotes.map(note => ({
+        ...note,
+        createdAt: note.createdAt.toISOString()
+      })),
+      healthObservations: log.healthObservations.map(obs => ({
+        ...obs,
+        observedAt: obs.observedAt?.toISOString() ?? null,
+        createdAt: obs.createdAt.toISOString()
+      }))
+    },
     progress: { completed, total }
   }
 }

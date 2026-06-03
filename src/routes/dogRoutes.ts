@@ -9,20 +9,25 @@ import {
   addDogMemberSchema,
   calendarQuerySchema,
   createCareActionSchema,
+  createCareActionStepSchema,
   createDogSchema,
   joinByShareCodeSchema,
   joinPreviewQuerySchema,
   createObservationSchema,
   dogActionIdParamSchema,
   dogCareActionIdParamSchema,
+  dogCareActionStepIdParamSchema,
+  dogDailyActionStepIdParamSchema,
   dogIdParamSchema,
   dogNoteIdParamSchema,
   dogObsIdParamSchema,
   historyQuerySchema,
   todayQuerySchema,
   updateCareActionSchema,
+  updateCareActionStepSchema,
   updateCarePlanSchema,
   updateDailyActionSchema,
+  updateDailyActionStepSchema,
   updateDogSchema,
   updateObservationSchema
 } from '../schemas/dogSchemas.js'
@@ -104,6 +109,30 @@ export default async function dogRoutes(
       carePlans.deactivateAction(request as AuthenticatedRequest, reply)
   })
 
+  fastify.post('/:id/care-plan/actions/:actionId/steps', {
+    preHandler: [
+      validateParams(dogCareActionIdParamSchema),
+      validate(createCareActionStepSchema)
+    ],
+    handler: async (request, reply) =>
+      carePlans.createActionStep(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.patch('/:id/care-plan/actions/:actionId/steps/:stepId', {
+    preHandler: [
+      validateParams(dogCareActionStepIdParamSchema),
+      validate(updateCareActionStepSchema)
+    ],
+    handler: async (request, reply) =>
+      carePlans.updateActionStep(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.patch('/:id/care-plan/actions/:actionId/steps/:stepId/deactivate', {
+    preHandler: validateParams(dogCareActionStepIdParamSchema),
+    handler: async (request, reply) =>
+      carePlans.deactivateActionStep(request as AuthenticatedRequest, reply)
+  })
+
   fastify.get('/:id/calendar', {
     preHandler: [validateParams(dogIdParamSchema), validateQuery(calendarQuerySchema)],
     handler: async (request, reply) => carePlans.getCalendar(request as AuthenticatedRequest, reply)
@@ -131,6 +160,15 @@ export default async function dogRoutes(
     preHandler: [validateParams(dogActionIdParamSchema), validate(updateDailyActionSchema)],
     handler: async (request, reply) =>
       dailyCare.updateDailyAction(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.patch('/:id/daily-action-steps/:stepId', {
+    preHandler: [
+      validateParams(dogDailyActionStepIdParamSchema),
+      validate(updateDailyActionStepSchema)
+    ],
+    handler: async (request, reply) =>
+      dailyCare.updateDailyActionStep(request as AuthenticatedRequest, reply)
   })
 
   fastify.post('/:id/observations', {

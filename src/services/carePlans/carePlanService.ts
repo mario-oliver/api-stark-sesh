@@ -6,6 +6,7 @@ import type {
 } from '../../generated/client.js'
 import { actionAppliesOnDate } from '../dailyCare/actionAppliesOnDate.js'
 import { formatCalendarDate, parseCalendarDate } from '../dailyCare/dateUtils.js'
+import { serializeCareActionStep, type CareActionStepRow } from './serializeCareActionStep.js'
 
 export type CreateCareActionInput = {
   name: string
@@ -21,7 +22,7 @@ export type CreateCareActionInput = {
 
 export type UpdateCareActionInput = Partial<CreateCareActionInput>
 
-function serializeCareAction(action: {
+type CareActionRow = {
   id: string
   carePlanId: string
   name: string
@@ -36,7 +37,19 @@ function serializeCareAction(action: {
   isActive: boolean
   createdAt: Date
   updatedAt: Date
-}) {
+  steps?: CareActionStepRow[]
+}
+
+async function serializeCareAction(action: CareActionRow) {
+  const steps = action.steps
+    ? await Promise.all(
+        action.steps
+          .filter(s => s.isActive)
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map(serializeCareActionStep)
+      )
+    : []
+
   return {
     id: action.id,
     carePlanId: action.carePlanId,
@@ -51,23 +64,21 @@ function serializeCareAction(action: {
     sortOrder: action.sortOrder,
     isActive: action.isActive,
     createdAt: action.createdAt.toISOString(),
-    updatedAt: action.updatedAt.toISOString()
+    updatedAt: action.updatedAt.toISOString(),
+    steps
   }
 }
 
-export async function getActiveCarePlan(dogId: string) {
-  const plan = await prisma.carePlan.findFirst({
-    where: { dogId, isActive: true },
-    include: {
-      actions: {
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' }
-      }
-    }
-  })
-
-  if (!plan) return null
-
+async function serializeCarePlan(plan: {
+  id: string
+  dogId: string
+  name: string
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+  actions: CareActionRow[]
+}) {
+  const actions = await Promise.all(plan.actions.map(serializeCareAction))
   return {
     id: plan.id,
     dogId: plan.dogId,
@@ -75,8 +86,27 @@ export async function getActiveCarePlan(dogId: string) {
     isActive: plan.isActive,
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),
-    actions: plan.actions.map(serializeCareAction)
+    actions
   }
+}
+
+const actionInclude = {
+  where: { isActive: true },
+  orderBy: { sortOrder: 'asc' as const },
+  include: {
+    steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' as const } }
+  }
+}
+
+export async function getActiveCarePlan(dogId: string) {
+  const plan = await prisma.carePlan.findFirst({
+    where: { dogId, isActive: true },
+    include: { actions: actionInclude }
+  })
+
+  if (!plan) return null
+
+  return serializeCarePlan(plan)
 }
 
 export async function updateCarePlanName(dogId: string, name: string) {
@@ -90,23 +120,10 @@ export async function updateCarePlanName(dogId: string, name: string) {
   const updated = await prisma.carePlan.update({
     where: { id: plan.id },
     data: { name },
-    include: {
-      actions: {
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' }
-      }
-    }
+    include: { actions: actionInclude }
   })
 
-  return {
-    id: updated.id,
-    dogId: updated.dogId,
-    name: updated.name,
-    isActive: updated.isActive,
-    createdAt: updated.createdAt.toISOString(),
-    updatedAt: updated.updatedAt.toISOString(),
-    actions: updated.actions.map(serializeCareAction)
-  }
+  return serializeCarePlan(updated)
 }
 
 export async function createCareAction(dogId: string, input: CreateCareActionInput) {
@@ -135,7 +152,8 @@ export async function createCareAction(dogId: string, input: CreateCareActionInp
       targetDurationSeconds: input.targetDurationSeconds ?? null,
       instructions: input.instructions ?? null,
       sortOrder
-    }
+    },
+    include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
   })
 
   return serializeCareAction(action)
@@ -171,7 +189,8 @@ export async function updateCareAction(
       }),
       ...(input.instructions !== undefined && { instructions: input.instructions }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder })
-    }
+    },
+    include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
   })
 
   return serializeCareAction(updated)
@@ -191,7 +210,8 @@ export async function deactivateCareAction(dogId: string, actionId: string) {
 
   const updated = await prisma.careAction.update({
     where: { id: actionId },
-    data: { isActive: false }
+    data: { isActive: false },
+    include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
   })
 
   return serializeCareAction(updated)
