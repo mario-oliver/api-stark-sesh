@@ -4,6 +4,8 @@ export type DefaultCareActionStepInput = {
   name: string
   description?: string
   instructions?: string
+  targetReps?: number | null
+  targetDurationSeconds?: number | null
   sortOrder: number
 }
 
@@ -15,6 +17,8 @@ export type DefaultCareActionInput = {
   timeOfDay?: CareActionTimeOfDay
   sortOrder: number
   instructions?: string
+  targetReps?: number | null
+  targetDurationSeconds?: number | null
   steps?: DefaultCareActionStepInput[]
 }
 
@@ -25,24 +29,28 @@ const MORNING_STRETCH_MOVEMENTS: DefaultCareActionStepInput[] = [
     name: 'Front leg stretch',
     description: 'Gentle extension of the front leg, hold briefly as tolerated.',
     instructions: 'Support under the chest; extend one front leg forward without forcing.',
+    targetDurationSeconds: 30,
     sortOrder: 1
   },
   {
     name: 'Elbow stretch',
     description: 'Light flexion and extension at the elbow.',
     instructions: 'Bend and straighten the elbow slowly; stop if resistance or discomfort.',
+    targetDurationSeconds: 30,
     sortOrder: 2
   },
   {
     name: 'Shoulder muscle stretch',
     description: 'Gentle shoulder mobility through comfortable range.',
     instructions: 'Guide the limb through a small arc; keep movements smooth and slow.',
+    targetDurationSeconds: 30,
     sortOrder: 3
   },
   {
     name: 'Hip flexor stretch',
     description: 'Mild hip flexor lengthening in standing or side-lying.',
     instructions: 'Use treats to encourage a shallow stretch; never pull past tolerance.',
+    targetDurationSeconds: 30,
     sortOrder: 4
   }
 ]
@@ -74,7 +82,8 @@ export const DEFAULT_MOBILITY_STRENGTH_ACTIONS: DefaultCareActionInput[] = [
     frequency: 'EVERY_OTHER_DAY',
     timeOfDay: 'EVENING',
     sortOrder: 3,
-    instructions: 'Assisted sit-to-stand reps as tolerated.'
+    instructions: 'Assisted sit-to-stand reps as tolerated.',
+    targetReps: 5
   },
   {
     name: 'Short controlled walk',

@@ -178,6 +178,8 @@ export const createCareActionStepSchema = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).optional().nullable(),
   instructions: z.string().trim().max(2000).optional().nullable(),
+  targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
+  targetDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
   mediaKey: mediaKeySchema,
   mediaContentType: z.string().trim().max(100).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).optional()
@@ -187,6 +189,8 @@ export const updateCareActionStepSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(2000).optional().nullable(),
   instructions: z.string().trim().max(2000).optional().nullable(),
+  targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
+  targetDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
   mediaKey: mediaKeySchema,
   mediaContentType: z.string().trim().max(100).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).optional()

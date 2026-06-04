@@ -6,6 +6,8 @@ export type CreateCareActionStepInput = {
   name: string
   description?: string | null
   instructions?: string | null
+  targetReps?: number | null
+  targetDurationSeconds?: number | null
   mediaKey?: string | null
   mediaContentType?: string | null
   sortOrder?: number
@@ -55,6 +57,8 @@ export async function createCareActionStep(
       name: input.name,
       description: input.description ?? null,
       instructions: input.instructions ?? null,
+      targetReps: input.targetReps ?? null,
+      targetDurationSeconds: input.targetDurationSeconds ?? null,
       mediaKey: input.mediaKey ?? null,
       mediaContentType: input.mediaContentType ?? null,
       sortOrder
@@ -87,6 +91,10 @@ export async function updateCareActionStep(
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.instructions !== undefined && { instructions: input.instructions }),
+      ...(input.targetReps !== undefined && { targetReps: input.targetReps }),
+      ...(input.targetDurationSeconds !== undefined && {
+        targetDurationSeconds: input.targetDurationSeconds
+      }),
       ...(input.mediaKey !== undefined && { mediaKey: input.mediaKey }),
       ...(input.mediaContentType !== undefined && { mediaContentType: input.mediaContentType }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder })

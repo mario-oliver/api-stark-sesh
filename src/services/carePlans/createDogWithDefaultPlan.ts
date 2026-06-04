@@ -67,6 +67,8 @@ export async function createDogWithDefaultPlan(userId: string, input: CreateDogI
             category: action.category,
             frequency: action.frequency,
             timeOfDay: action.timeOfDay ?? null,
+            targetReps: action.targetReps ?? null,
+            targetDurationSeconds: action.targetDurationSeconds ?? null,
             instructions: action.instructions ?? null,
             sortOrder: action.sortOrder,
             steps: action.steps
@@ -75,6 +77,8 @@ export async function createDogWithDefaultPlan(userId: string, input: CreateDogI
                     name: step.name,
                     description: step.description ?? null,
                     instructions: step.instructions ?? null,
+                    targetReps: step.targetReps ?? null,
+                    targetDurationSeconds: step.targetDurationSeconds ?? null,
                     sortOrder: step.sortOrder
                   }))
                 }

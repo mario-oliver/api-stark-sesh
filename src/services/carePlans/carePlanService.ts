@@ -26,6 +26,8 @@ export type CreateCareActionStepInput = {
   name: string
   description?: string | null
   instructions?: string | null
+  targetReps?: number | null
+  targetDurationSeconds?: number | null
   sortOrder?: number
 }
 
@@ -211,6 +213,8 @@ export async function createCareActionWithSteps(
           name: step.name,
           description: step.description ?? null,
           instructions: step.instructions ?? null,
+          targetReps: step.targetReps ?? null,
+          targetDurationSeconds: step.targetDurationSeconds ?? null,
           sortOrder: step.sortOrder ?? index + 1
         }))
       })

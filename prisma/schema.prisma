@@ -196,14 +196,16 @@ model CareAction {
 }
 
 model CareActionStep {
-  id               String   @id @default(uuid())
-  careActionId     String
-  name             String
-  description      String?
-  instructions     String?
-  mediaKey         String?
-  mediaContentType String?
-  sortOrder        Int      @default(0)
+  id                    String   @id @default(uuid())
+  careActionId          String
+  name                  String
+  description           String?
+  instructions          String?
+  targetReps            Int?
+  targetDurationSeconds Int?
+  mediaKey              String?
+  mediaContentType      String?
+  sortOrder             Int      @default(0)
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -242,11 +244,13 @@ model DailyCareAction {
   status            DailyCareActionStatus @default(PENDING)
   completedAt       DateTime?
   completedByUserId String?
-  notes             String?
-  tolerance         Tolerance?
-  issueObserved     Boolean               @default(false)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  notes                    String?
+  tolerance                Tolerance?
+  issueObserved            Boolean               @default(false)
+  targetReps               Int?
+  targetDurationSeconds    Int?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
 
   dailyCareLog DailyCareLog          @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
   careAction   CareAction            @relation(fields: [careActionId], references: [id], onDelete: Cascade)
@@ -260,16 +264,18 @@ model DailyCareAction {
 }
 
 model DailyCareActionStep {
-  id                String                @id @default(uuid())
-  dailyCareActionId String
-  careActionStepId  String
-  nameSnapshot      String
-  status            DailyCareActionStatus @default(PENDING)
-  completedAt       DateTime?
-  completedByUserId String?
-  notes             String?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  id                    String                @id @default(uuid())
+  dailyCareActionId     String
+  careActionStepId      String
+  nameSnapshot          String
+  targetReps            Int?
+  targetDurationSeconds Int?
+  status                DailyCareActionStatus @default(PENDING)
+  completedAt           DateTime?
+  completedByUserId     String?
+  notes                 String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
   dailyCareAction DailyCareAction @relation(fields: [dailyCareActionId], references: [id], onDelete: Cascade)
   careActionStep  CareActionStep  @relation(fields: [careActionStepId], references: [id], onDelete: Cascade)

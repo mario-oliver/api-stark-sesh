@@ -73,6 +73,7 @@ export class DailyCareController {
       },
       include: {
         completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+        careAction: { select: { targetReps: true, targetDurationSeconds: true } },
         steps: {
           orderBy: { createdAt: 'asc' },
           include: {
@@ -81,6 +82,8 @@ export class DailyCareController {
               select: {
                 description: true,
                 instructions: true,
+                targetReps: true,
+                targetDurationSeconds: true,
                 mediaKey: true,
                 mediaContentType: true
               }

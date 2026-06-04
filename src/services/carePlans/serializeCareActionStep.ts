@@ -6,6 +6,8 @@ export type CareActionStepRow = {
   name: string
   description: string | null
   instructions: string | null
+  targetReps: number | null
+  targetDurationSeconds: number | null
   mediaKey: string | null
   mediaContentType: string | null
   sortOrder: number
@@ -22,6 +24,8 @@ export async function serializeCareActionStep(step: CareActionStepRow) {
     name: step.name,
     description: step.description,
     instructions: step.instructions,
+    targetReps: step.targetReps,
+    targetDurationSeconds: step.targetDurationSeconds,
     mediaKey: step.mediaKey,
     mediaContentType: step.mediaContentType,
     mediaUrl,

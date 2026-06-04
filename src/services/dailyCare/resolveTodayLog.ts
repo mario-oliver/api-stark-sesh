@@ -8,6 +8,7 @@ const dailyActionInclude = {
   orderBy: { createdAt: 'asc' as const },
   include: {
     completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+    careAction: { select: { targetReps: true, targetDurationSeconds: true } },
     steps: {
       orderBy: { createdAt: 'asc' as const },
       include: {
@@ -16,6 +17,8 @@ const dailyActionInclude = {
           select: {
             description: true,
             instructions: true,
+            targetReps: true,
+            targetDurationSeconds: true,
             mediaKey: true,
             mediaContentType: true
           }
@@ -72,6 +75,8 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
               careActionId: a.id,
               nameSnapshot: a.name,
               categorySnapshot: a.category,
+              targetReps: a.targetReps,
+              targetDurationSeconds: a.targetDurationSeconds,
               status: 'PENDING'
             }
           })
@@ -89,6 +94,8 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
               dailyCareActionId: dailyAction.id,
               careActionStepId: step.id,
               nameSnapshot: step.name,
+              targetReps: step.targetReps,
+              targetDurationSeconds: step.targetDurationSeconds,
               status: 'PENDING' as const
             }))
           })

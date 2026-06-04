@@ -14,17 +14,25 @@ export type DailyCareActionWithRelations = {
   notes: string | null
   tolerance: string | null
   issueObserved: boolean
+  targetReps: number | null
+  targetDurationSeconds: number | null
   completedBy: {
     id: string
     email: string
     firstName: string | null
     lastName: string | null
   } | null
+  careAction?: {
+    targetReps: number | null
+    targetDurationSeconds: number | null
+  } | null
   steps: Array<{
     id: string
     dailyCareActionId: string
     careActionStepId: string
     nameSnapshot: string
+    targetReps: number | null
+    targetDurationSeconds: number | null
     status: string
     completedAt: Date | null
     completedByUserId: string | null
@@ -38,10 +46,26 @@ export type DailyCareActionWithRelations = {
     careActionStep: {
       description: string | null
       instructions: string | null
+      targetReps: number | null
+      targetDurationSeconds: number | null
       mediaKey: string | null
       mediaContentType: string | null
     }
   }>
+}
+
+function resolveTargetReps(
+  snapshot: number | null,
+  template: number | null | undefined
+): number | null {
+  return snapshot ?? template ?? null
+}
+
+function resolveTargetDuration(
+  snapshot: number | null,
+  template: number | null | undefined
+): number | null {
+  return snapshot ?? template ?? null
 }
 
 export async function serializeDailyCareActionStep(
@@ -55,6 +79,11 @@ export async function serializeDailyCareActionStep(
     nameSnapshot: step.nameSnapshot,
     description: step.careActionStep.description,
     instructions: step.careActionStep.instructions,
+    targetReps: resolveTargetReps(step.targetReps, step.careActionStep.targetReps),
+    targetDurationSeconds: resolveTargetDuration(
+      step.targetDurationSeconds,
+      step.careActionStep.targetDurationSeconds
+    ),
     mediaKey: step.careActionStep.mediaKey,
     mediaContentType: step.careActionStep.mediaContentType,
     mediaUrl,
@@ -81,6 +110,11 @@ export async function serializeDailyCareAction(action: DailyCareActionWithRelati
     notes: action.notes,
     tolerance: action.tolerance,
     issueObserved: action.issueObserved,
+    targetReps: resolveTargetReps(action.targetReps, action.careAction?.targetReps),
+    targetDurationSeconds: resolveTargetDuration(
+      action.targetDurationSeconds,
+      action.careAction?.targetDurationSeconds
+    ),
     completedBy: action.completedBy,
     steps,
     movementProgress:

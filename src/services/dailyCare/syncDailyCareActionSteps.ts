@@ -24,6 +24,8 @@ export async function syncDailyCareActionSteps(dailyCareLogId: string) {
         dailyCareActionId: dailyAction.id,
         careActionStepId: step.id,
         nameSnapshot: step.name,
+        targetReps: step.targetReps,
+        targetDurationSeconds: step.targetDurationSeconds,
         status: 'PENDING' as const
       }))
     })
