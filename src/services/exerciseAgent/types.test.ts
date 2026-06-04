@@ -9,11 +9,15 @@ describe('proposedExerciseSchema', () => {
     category: 'MOBILITY',
     frequency: 'DAILY',
     timeOfDay: 'MORNING',
+    targetReps: null,
+    targetDurationSeconds: null,
     instructions: 'Go slowly',
     movements: [
       {
         name: 'Hip flexor stretch',
-        instructions: 'Stop if pain appears.'
+        description: null,
+        instructions: 'Stop if pain appears.',
+        sortOrder: null
       }
     ],
     rationale: 'Supports hip strength goals.',

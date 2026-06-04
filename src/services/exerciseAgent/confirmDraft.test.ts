@@ -30,10 +30,21 @@ function toCareActionInput(draft: ReturnType<typeof proposedExerciseSchema.parse
 describe('confirm draft preparation', () => {
   const baseDraft = {
     name: 'Evening stretch',
+    description: null,
     category: 'STRETCH',
     frequency: 'DAILY',
     timeOfDay: 'EVENING',
-    movements: [{ name: 'Neck stretch', instructions: 'Gentle only.' }],
+    targetReps: null,
+    targetDurationSeconds: null,
+    instructions: null,
+    movements: [
+      {
+        name: 'Neck stretch',
+        description: null,
+        instructions: 'Gentle only.',
+        sortOrder: null
+      }
+    ],
     rationale: 'Helps stiffness.',
     safetyNotes: 'Consult your vet.',
     researchSummary: 'General canine stretch info.'

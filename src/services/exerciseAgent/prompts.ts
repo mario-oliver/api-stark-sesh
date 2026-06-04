@@ -30,8 +30,9 @@ export const CLARIFY_SYSTEM = [
   'Determine if you have enough information to design a safe home exercise.',
   'Required: goal (what to improve), affected body area, and general tolerance/mobility level.',
   'Nice to have: preferred frequency, time of day, session length.',
-  'If information is missing, set needsClarification true and ask 1–3 concise follow-up questions.',
-  'If ready to proceed, set needsClarification false and provide 1–3 Tavily search queries for canine rehab research.',
+  'If information is missing, set needsClarification true and ask 1–3 concise follow-up questions; set researchQueries to an empty array.',
+  'If ready to proceed, set needsClarification false, questions to an empty array, and provide 1–3 Tavily search queries in researchQueries.',
+  'Use null for unused optional text or number fields in drafts, not omitted keys.',
   'Return JSON only.'
 ].join(' ')
 
@@ -39,5 +40,5 @@ export const DRAFT_SYSTEM = [
   EXERCISE_AGENT_SYSTEM,
   'Create a complete exercise proposal based on the conversation, dog context, and research summaries.',
   'Include rationale, safetyNotes (vet disclaimer + when to stop), and researchSummary citing what informed the plan.',
-  'Return JSON matching the required schema.'
+  'Return JSON matching the required schema; use null for unused description, instructions, timeOfDay, targetReps, targetDurationSeconds, or movement sortOrder fields.'
 ].join(' ')

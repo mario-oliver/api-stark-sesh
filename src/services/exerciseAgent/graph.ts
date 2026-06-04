@@ -50,7 +50,7 @@ async function callClarify(
   return {
     needsClarification: result.needsClarification,
     questions: result.questions,
-    researchQueries: result.researchQueries ?? []
+    researchQueries: result.researchQueries
   }
 }
 
@@ -167,14 +167,14 @@ function routeAfterClarify(state: typeof GraphAnnotation.State) {
   if (state.phase === 'done') {
     return END
   }
-  return 'research'
+  return 'webResearch'
 }
 
-function routeAfterResearch() {
-  return 'draft'
+function routeAfterWebResearch() {
+  return 'buildDraft'
 }
 
-function routeAfterDraft() {
+function routeAfterBuildDraft() {
   return END
 }
 
@@ -184,13 +184,13 @@ function buildGraph() {
   const graph = new StateGraph(GraphAnnotation)
     .addNode('intake', intakeNode)
     .addNode('clarify', clarifyNode)
-    .addNode('research', researchNode)
-    .addNode('draft', draftNode)
+    .addNode('webResearch', researchNode)
+    .addNode('buildDraft', draftNode)
     .addEdge(START, 'intake')
     .addEdge('intake', 'clarify')
-    .addConditionalEdges('clarify', routeAfterClarify, ['research', END])
-    .addConditionalEdges('research', routeAfterResearch, ['draft'])
-    .addConditionalEdges('draft', routeAfterDraft, [END])
+    .addConditionalEdges('clarify', routeAfterClarify, ['webResearch', END])
+    .addConditionalEdges('webResearch', routeAfterWebResearch, ['buildDraft'])
+    .addConditionalEdges('buildDraft', routeAfterBuildDraft, [END])
 
   return graph.compile()
 }

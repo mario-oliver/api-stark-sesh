@@ -4,6 +4,7 @@ import { createCareActionWithSteps } from '../carePlans/carePlanService.js'
 import { runExerciseAgentGraph } from './graph.js'
 import { loadDogAgentContext } from './tools/routineContext.js'
 import {
+  normalizeProposedExerciseInput,
   proposedExerciseSchema,
   type ProposedExercise,
   type StoredMessage
@@ -185,7 +186,7 @@ export async function confirmExerciseAgentSession(args: {
   }
 
   const merged = { ...(rawDraft as object), ...(args.edits ?? {}) }
-  const draft = proposedExerciseSchema.parse(merged)
+  const draft = proposedExerciseSchema.parse(normalizeProposedExerciseInput(merged))
 
   const { movements, rationale: _r, safetyNotes: _s, researchSummary: _rs, ...actionFields } =
     draft
@@ -247,7 +248,9 @@ export function serializeSession(session: {
 
   let draft: ProposedExercise | null = null
   if (session.draft) {
-    const parsed = proposedExerciseSchema.safeParse(session.draft)
+    const parsed = proposedExerciseSchema.safeParse(
+      normalizeProposedExerciseInput(session.draft)
+    )
     if (parsed.success) draft = parsed.data
   }
 
