@@ -3,6 +3,7 @@ import { DogsController } from '../controllers/dogsController.js'
 import { DailyCareController } from '../controllers/dailyCareController.js'
 import { CarePlansController } from '../controllers/carePlansController.js'
 import { VoiceNotesController } from '../controllers/voiceNotesController.js'
+import { ExerciseAgentController } from '../controllers/exerciseAgentController.js'
 import { validate, validateParams, validateQuery } from '../middleware/validation.js'
 import type { AuthenticatedRequest } from '../types/auth.js'
 import {
@@ -31,6 +32,12 @@ import {
   updateDogSchema,
   updateObservationSchema
 } from '../schemas/dogSchemas.js'
+import {
+  confirmExerciseAgentSessionSchema,
+  createExerciseAgentSessionSchema,
+  exerciseAgentSessionIdParamSchema,
+  sendExerciseAgentMessageSchema
+} from '../schemas/exerciseAgentSchemas.js'
 
 export default async function dogRoutes(
   fastify: FastifyInstance,
@@ -40,6 +47,7 @@ export default async function dogRoutes(
   const dailyCare = new DailyCareController()
   const carePlans = new CarePlansController()
   const voiceNotes = new VoiceNotesController()
+  const exerciseAgent = new ExerciseAgentController()
 
   fastify.get('/', {
     handler: async (request, reply) => dogs.listDogs(request as AuthenticatedRequest, reply)
@@ -88,6 +96,47 @@ export default async function dogRoutes(
   fastify.patch('/:id/care-plan', {
     preHandler: [validateParams(dogIdParamSchema), validate(updateCarePlanSchema)],
     handler: async (request, reply) => carePlans.updateCarePlan(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.post('/:id/exercise-agent/sessions', {
+    preHandler: [
+      validateParams(dogIdParamSchema),
+      validate(createExerciseAgentSessionSchema)
+    ],
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+    handler: async (request, reply) =>
+      exerciseAgent.createSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.get('/:id/exercise-agent/sessions/:sessionId', {
+    preHandler: validateParams(exerciseAgentSessionIdParamSchema),
+    handler: async (request, reply) =>
+      exerciseAgent.getSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.post('/:id/exercise-agent/sessions/:sessionId/messages', {
+    preHandler: [
+      validateParams(exerciseAgentSessionIdParamSchema),
+      validate(sendExerciseAgentMessageSchema)
+    ],
+    config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
+    handler: async (request, reply) =>
+      exerciseAgent.sendMessage(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.post('/:id/exercise-agent/sessions/:sessionId/confirm', {
+    preHandler: [
+      validateParams(exerciseAgentSessionIdParamSchema),
+      validate(confirmExerciseAgentSessionSchema)
+    ],
+    handler: async (request, reply) =>
+      exerciseAgent.confirmSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.delete('/:id/exercise-agent/sessions/:sessionId', {
+    preHandler: validateParams(exerciseAgentSessionIdParamSchema),
+    handler: async (request, reply) =>
+      exerciseAgent.cancelSession(request as AuthenticatedRequest, reply)
   })
 
   fastify.post('/:id/care-plan/actions', {

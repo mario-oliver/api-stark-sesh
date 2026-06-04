@@ -89,6 +89,14 @@ enum DogSex {
   UNKNOWN
 }
 
+enum ExerciseAgentSessionStatus {
+  ACTIVE
+  AWAITING_INPUT
+  DRAFT_READY
+  COMMITTED
+  FAILED
+}
+
 model User {
   id        String   @id
   email     String   @unique
@@ -123,11 +131,12 @@ model Dog {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members           DogMember[]
-  carePlans         CarePlan[]
-  dailyCareLogs     DailyCareLog[]
-  voiceNotes        VoiceNote[]
-  healthObservations HealthObservation[]
+  members                DogMember[]
+  carePlans              CarePlan[]
+  dailyCareLogs          DailyCareLog[]
+  voiceNotes             VoiceNote[]
+  healthObservations     HealthObservation[]
+  exerciseAgentSessions  ExerciseAgentSession[]
 
   @@index([name])
 }
@@ -339,4 +348,23 @@ model HealthObservation {
   @@index([dailyCareLogId])
   @@index([userId])
   @@index([voiceNoteId])
+}
+
+model ExerciseAgentSession {
+  id        String                     @id @default(uuid())
+  dogId     String
+  userId    String
+  status    ExerciseAgentSessionStatus @default(ACTIVE)
+  messages  Json                       @default("[]")
+  draft     Json?
+  research  Json?
+  questions Json?
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+
+  dog Dog @relation(fields: [dogId], references: [id], onDelete: Cascade)
+
+  @@index([dogId])
+  @@index([dogId, userId])
+  @@index([status])
 }

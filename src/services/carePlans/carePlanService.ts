@@ -22,6 +22,17 @@ export type CreateCareActionInput = {
 
 export type UpdateCareActionInput = Partial<CreateCareActionInput>
 
+export type CreateCareActionStepInput = {
+  name: string
+  description?: string | null
+  instructions?: string | null
+  sortOrder?: number
+}
+
+export type CreateCareActionWithStepsInput = CreateCareActionInput & {
+  steps: CreateCareActionStepInput[]
+}
+
 type CareActionRow = {
   id: string
   carePlanId: string
@@ -154,6 +165,61 @@ export async function createCareAction(dogId: string, input: CreateCareActionInp
       sortOrder
     },
     include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
+  })
+
+  return serializeCareAction(action)
+}
+
+export async function createCareActionWithSteps(
+  dogId: string,
+  input: CreateCareActionWithStepsInput
+) {
+  const plan = await prisma.carePlan.findFirst({
+    where: { dogId, isActive: true },
+    include: {
+      actions: { where: { isActive: true }, orderBy: { sortOrder: 'desc' }, take: 1 }
+    }
+  })
+  if (!plan) {
+    throw new Error('No active care plan found')
+  }
+
+  const maxSort = plan.actions[0]?.sortOrder ?? 0
+  const sortOrder = input.sortOrder ?? maxSort + 1
+  const { steps, ...actionInput } = input
+
+  const action = await prisma.$transaction(async tx => {
+    const created = await tx.careAction.create({
+      data: {
+        carePlanId: plan.id,
+        name: actionInput.name,
+        description: actionInput.description ?? null,
+        category: actionInput.category,
+        frequency: actionInput.frequency,
+        timeOfDay: actionInput.timeOfDay ?? null,
+        targetReps: actionInput.targetReps ?? null,
+        targetDurationSeconds: actionInput.targetDurationSeconds ?? null,
+        instructions: actionInput.instructions ?? null,
+        sortOrder
+      }
+    })
+
+    if (steps.length > 0) {
+      await tx.careActionStep.createMany({
+        data: steps.map((step, index) => ({
+          careActionId: created.id,
+          name: step.name,
+          description: step.description ?? null,
+          instructions: step.instructions ?? null,
+          sortOrder: step.sortOrder ?? index + 1
+        }))
+      })
+    }
+
+    return tx.careAction.findUniqueOrThrow({
+      where: { id: created.id },
+      include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
+    })
   })
 
   return serializeCareAction(action)
