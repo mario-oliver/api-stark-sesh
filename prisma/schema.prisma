@@ -83,6 +83,12 @@ enum ObservationSeverity {
   UNKNOWN
 }
 
+enum DogSex {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
 model User {
   id        String   @id
   email     String   @unique
@@ -106,6 +112,11 @@ model Dog {
   name      String
   breed     String?
   age       Int?
+  sex       DogSex?
+  weightLbs Float?
+  condition String?
+  vetName   String?
+  vetPhone  String?
   photoKey  String?
   notes     String?
   shareCode String   @unique

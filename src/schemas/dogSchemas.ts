@@ -1,22 +1,29 @@
 import { z } from 'zod'
 
-/** S3 object key returned from POST /v1/uploads/dog-photo/presign */
 const photoKeySchema = z.string().trim().min(1).max(512).optional().nullable()
+
+const dogSexSchema = z.enum(['MALE', 'FEMALE', 'UNKNOWN']).optional().nullable()
+
+const dogProfileFields = {
+  breed: z.string().trim().max(100).optional().nullable(),
+  age: z.coerce.number().int().min(0).max(30).optional().nullable(),
+  sex: dogSexSchema,
+  weightLbs: z.coerce.number().min(0).max(300).optional().nullable(),
+  condition: z.string().trim().max(500).optional().nullable(),
+  vetName: z.string().trim().max(200).optional().nullable(),
+  vetPhone: z.string().trim().max(30).optional().nullable(),
+  photoKey: photoKeySchema,
+  notes: z.string().trim().max(2000).optional().nullable()
+}
 
 export const createDogSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  breed: z.string().trim().max(100).optional().nullable(),
-  age: z.coerce.number().int().min(0).max(30).optional().nullable(),
-  photoKey: photoKeySchema,
-  notes: z.string().trim().max(2000).optional().nullable()
+  ...dogProfileFields
 })
 
 export const updateDogSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
-  breed: z.string().trim().max(100).optional().nullable(),
-  age: z.coerce.number().int().min(0).max(30).optional().nullable(),
-  photoKey: photoKeySchema,
-  notes: z.string().trim().max(2000).optional().nullable()
+  ...dogProfileFields
 })
 
 export const dogIdParamSchema = z.object({

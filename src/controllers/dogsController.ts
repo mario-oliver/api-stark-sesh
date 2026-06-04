@@ -76,6 +76,11 @@ export class DogsController {
       name: string
       breed?: string | null
       age?: number | null
+      sex?: 'MALE' | 'FEMALE' | 'UNKNOWN' | null
+      weightLbs?: number | null
+      condition?: string | null
+      vetName?: string | null
+      vetPhone?: string | null
       photoKey?: string | null
       notes?: string | null
     }
@@ -107,6 +112,11 @@ export class DogsController {
       name?: string
       breed?: string | null
       age?: number | null
+      sex?: 'MALE' | 'FEMALE' | 'UNKNOWN' | null
+      weightLbs?: number | null
+      condition?: string | null
+      vetName?: string | null
+      vetPhone?: string | null
       photoKey?: string | null
       notes?: string | null
     }
@@ -131,6 +141,11 @@ export class DogsController {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.breed !== undefined && { breed: body.breed }),
         ...(body.age !== undefined && { age: body.age }),
+        ...(body.sex !== undefined && { sex: body.sex }),
+        ...(body.weightLbs !== undefined && { weightLbs: body.weightLbs }),
+        ...(body.condition !== undefined && { condition: body.condition }),
+        ...(body.vetName !== undefined && { vetName: body.vetName }),
+        ...(body.vetPhone !== undefined && { vetPhone: body.vetPhone }),
         ...(body.photoKey !== undefined && { photoKey: body.photoKey }),
         ...(body.notes !== undefined && { notes: body.notes })
       }

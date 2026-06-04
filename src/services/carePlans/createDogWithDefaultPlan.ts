@@ -9,6 +9,11 @@ export type CreateDogInput = {
   name: string
   breed?: string | null
   age?: number | null
+  sex?: 'MALE' | 'FEMALE' | 'UNKNOWN' | null
+  weightLbs?: number | null
+  condition?: string | null
+  vetName?: string | null
+  vetPhone?: string | null
   photoKey?: string | null
   notes?: string | null
 }
@@ -31,6 +36,11 @@ export async function createDogWithDefaultPlan(userId: string, input: CreateDogI
         name: input.name,
         breed: input.breed ?? null,
         age: input.age ?? null,
+        sex: input.sex ?? null,
+        weightLbs: input.weightLbs ?? null,
+        condition: input.condition ?? null,
+        vetName: input.vetName ?? null,
+        vetPhone: input.vetPhone ?? null,
         photoKey: input.photoKey ?? null,
         notes: input.notes ?? null,
         shareCode
