@@ -1,9 +1,12 @@
 import { prisma } from '../../lib/prisma.js'
+import { categoryToBucket } from './categoryToBucket.js'
 import { assertCareStepMediaKeyOwnedByUser } from '../s3/careStepMedia.js'
 import { serializeCareActionStep } from './serializeCareActionStep.js'
+import type { CareBucket } from '../../generated/client.js'
 
 export type CreateCareActionStepInput = {
   name: string
+  bucket?: CareBucket | null
   description?: string | null
   instructions?: string | null
   targetReps?: number | null
@@ -55,6 +58,7 @@ export async function createCareActionStep(
     data: {
       careActionId: action.id,
       name: input.name,
+      bucket: input.bucket ?? action.bucket,
       description: input.description ?? null,
       instructions: input.instructions ?? null,
       targetReps: input.targetReps ?? null,
@@ -89,6 +93,7 @@ export async function updateCareActionStep(
     where: { id: stepId },
     data: {
       ...(input.name !== undefined && { name: input.name }),
+      ...(input.bucket !== undefined && { bucket: input.bucket }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.instructions !== undefined && { instructions: input.instructions }),
       ...(input.targetReps !== undefined && { targetReps: input.targetReps }),

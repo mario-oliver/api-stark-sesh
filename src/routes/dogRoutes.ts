@@ -29,6 +29,11 @@ import {
   updateCarePlanSchema,
   updateDailyActionSchema,
   updateDailyActionStepSchema,
+  updateDailyTaskSchema,
+  createDailyTaskSchema,
+  reviewDailyTaskSchema,
+  dogDailyTaskIdParamSchema,
+  dogDailyLogIdParamSchema,
   updateDogSchema,
   updateObservationSchema
 } from '../schemas/dogSchemas.js'
@@ -71,6 +76,11 @@ export default async function dogRoutes(
   fastify.get('/:id', {
     preHandler: validateParams(dogIdParamSchema),
     handler: async (request, reply) => dogs.getDog(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.get('/:id/photo', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) => dogs.getDogPhoto(request as AuthenticatedRequest, reply)
   })
 
   fastify.patch('/:id', {
@@ -218,6 +228,30 @@ export default async function dogRoutes(
     ],
     handler: async (request, reply) =>
       dailyCare.updateDailyActionStep(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.patch('/:id/daily-tasks/:taskId', {
+    preHandler: [validateParams(dogDailyTaskIdParamSchema), validate(updateDailyTaskSchema)],
+    handler: async (request, reply) =>
+      dailyCare.updateDailyTaskHandler(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.post('/:id/daily-tasks', {
+    preHandler: [validateParams(dogIdParamSchema), validate(createDailyTaskSchema)],
+    handler: async (request, reply) =>
+      dailyCare.createDailyTaskHandler(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.patch('/:id/daily-tasks/:taskId/review', {
+    preHandler: [validateParams(dogDailyTaskIdParamSchema), validate(reviewDailyTaskSchema)],
+    handler: async (request, reply) =>
+      dailyCare.reviewDailyTaskHandler(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.post('/:id/daily-logs/:logId/recompute-scores', {
+    preHandler: validateParams(dogDailyLogIdParamSchema),
+    handler: async (request, reply) =>
+      dailyCare.recomputeScores(request as AuthenticatedRequest, reply)
   })
 
   fastify.post('/:id/observations', {

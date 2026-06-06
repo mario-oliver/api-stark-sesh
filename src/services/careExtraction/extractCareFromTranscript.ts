@@ -1,6 +1,11 @@
 import OpenAI from 'openai'
 import { buildCareExtractionPrompt } from './prompt.js'
-import { careExtractionOutputSchema, type CareExtractionOutput, type TodayActionContext } from './types.js'
+import {
+  careExtractionOutputSchema,
+  type CareExtractionOutput,
+  type TodayActionContext,
+  type TodayTaskContext
+} from './types.js'
 
 export async function extractCareFromTranscript(args: {
   dogName: string
@@ -9,6 +14,7 @@ export async function extractCareFromTranscript(args: {
   userName: string
   date: string
   actions: TodayActionContext[]
+  tasks: TodayTaskContext[]
   transcript: string
 }): Promise<CareExtractionOutput> {
   const apiKey = process.env.OPENAI_API_KEY

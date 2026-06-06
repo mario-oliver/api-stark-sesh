@@ -11,6 +11,13 @@ import {
 } from '../services/dailyCare/dailyCareActionUpdates.js'
 import { serializeDailyCareAction } from '../services/dailyCare/serializeDailyCare.js'
 import {
+  createAdHocDailyTask,
+  reviewDailyTask,
+  updateDailyTask
+} from '../services/dailyCare/dailyTaskService.js'
+import { observationTypeToBucket } from '../services/carePlans/categoryToBucket.js'
+import { computeBucketScores } from '../services/bucketScoring/computeBucketScores.js'
+import {
   sendForbidden,
   sendNotFound,
   sendSuccess,
@@ -135,6 +142,7 @@ export class DailyCareController {
     const { id: dogId } = request.params as { id: string }
     const body = request.body as {
       type: string
+      bucket?: string
       severity?: string
       bodyArea?: string | null
       note: string
@@ -166,6 +174,7 @@ export class DailyCareController {
         dailyCareLogId: log.id,
         userId: request.user.id,
         type: body.type as never,
+        bucket: (body.bucket as never) ?? observationTypeToBucket(body.type as never),
         severity: (body.severity as never) ?? null,
         bodyArea: body.bodyArea ?? null,
         note: body.note,
@@ -214,6 +223,98 @@ export class DailyCareController {
     })
 
     return sendUpdated(reply, updated)
+  }
+
+  async updateDailyTaskHandler(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id: dogId, taskId } = request.params as { id: string; taskId: string }
+    const body = request.body as {
+      status?: DailyCareActionStatus
+      notes?: string
+      actualReps?: number | null
+      actualDurationSeconds?: number | null
+      needsReview?: boolean
+    }
+
+    const member = await assertDogMemberAccess(dogId, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    const result = await updateDailyTask(taskId, dogId, request.user.id, body)
+    if (!result) {
+      return sendNotFound(reply, 'Daily task not found')
+    }
+
+    return sendUpdated(reply, result.task)
+  }
+
+  async createDailyTaskHandler(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id: dogId } = request.params as { id: string }
+    const body = request.body as {
+      dailyCareLogId?: string
+      date?: string
+      bucket: 'ACTIVITY' | 'MOBILITY' | 'RECOVERY'
+      name: string
+      description?: string | null
+      notes?: string | null
+      targetReps?: number | null
+      targetDurationSeconds?: number | null
+    }
+
+    const member = await assertDogMemberAccess(dogId, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    const task = await createAdHocDailyTask(dogId, body)
+    if (!task) {
+      return sendNotFound(reply, 'Daily log not found')
+    }
+
+    return sendSuccess(reply, task, 201)
+  }
+
+  async reviewDailyTaskHandler(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id: dogId, taskId } = request.params as { id: string; taskId: string }
+    const body = request.body as {
+      accept: boolean
+      status?: DailyCareActionStatus
+    }
+
+    const member = await assertDogMemberAccess(dogId, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    const result = await reviewDailyTask(taskId, dogId, request.user.id, body)
+    if (!result) {
+      return sendNotFound(reply, 'Daily task not found')
+    }
+
+    if ('deleted' in result && result.deleted) {
+      return sendSuccess(reply, { deleted: true })
+    }
+
+    return sendUpdated(reply, result.task)
+  }
+
+  async recomputeScores(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id: dogId, logId } = request.params as { id: string; logId: string }
+
+    const member = await assertDogMemberAccess(dogId, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    const log = await prisma.dailyCareLog.findFirst({
+      where: { id: logId, dogId }
+    })
+    if (!log) {
+      return sendNotFound(reply, 'Daily log not found')
+    }
+
+    const scores = await computeBucketScores(logId)
+    return sendSuccess(reply, scores)
   }
 
   async getTodayAfterMutation(dogId: string, dailyCareLogId: string) {

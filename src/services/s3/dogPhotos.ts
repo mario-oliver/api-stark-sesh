@@ -105,3 +105,26 @@ export async function getPresignedDogPhotoViewUrl(
 
   return getSignedUrl(client, command, { expiresIn: config.viewExpiresSeconds })
 }
+
+export async function streamDogPhoto(photoKey: string): Promise<{
+  body: NodeJS.ReadableStream
+  contentType: string
+}> {
+  const config = getS3Config()
+  const client = getS3Client()
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: config.bucket,
+      Key: photoKey
+    })
+  )
+
+  if (!response.Body) {
+    throw new Error('Photo object is empty')
+  }
+
+  return {
+    body: response.Body as NodeJS.ReadableStream,
+    contentType: response.ContentType ?? 'image/jpeg'
+  }
+}

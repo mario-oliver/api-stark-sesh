@@ -61,6 +61,8 @@ export const updateDailyActionSchema = z.object({
   issueObserved: z.boolean().optional()
 })
 
+const careBucketSchema = z.enum(['ACTIVITY', 'MOBILITY', 'RECOVERY'])
+
 export const createObservationSchema = z.object({
   type: z.enum([
     'SLIPPING',
@@ -74,6 +76,7 @@ export const createObservationSchema = z.object({
     'MEDICATION',
     'GENERAL_NOTE'
   ]),
+  bucket: careBucketSchema.optional(),
   severity: z.enum(['MILD', 'MODERATE', 'SEVERE', 'UNKNOWN']).optional(),
   bodyArea: z.string().nullable().optional(),
   note: z.string().min(1),
@@ -136,6 +139,7 @@ export const createCareActionSchema = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).optional().nullable(),
   category: careActionCategorySchema,
+  bucket: careBucketSchema.optional().nullable(),
   frequency: careActionFrequencySchema,
   timeOfDay: careActionTimeOfDaySchema.optional().nullable(),
   targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
@@ -148,6 +152,7 @@ export const updateCareActionSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(2000).optional().nullable(),
   category: careActionCategorySchema.optional(),
+  bucket: careBucketSchema.optional().nullable(),
   frequency: careActionFrequencySchema.optional(),
   timeOfDay: careActionTimeOfDaySchema.optional().nullable(),
   targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
@@ -176,6 +181,7 @@ const mediaKeySchema = z.string().trim().min(1).max(512).optional().nullable()
 
 export const createCareActionStepSchema = z.object({
   name: z.string().trim().min(1).max(200),
+  bucket: careBucketSchema.optional().nullable(),
   description: z.string().trim().max(2000).optional().nullable(),
   instructions: z.string().trim().max(2000).optional().nullable(),
   targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
@@ -187,6 +193,7 @@ export const createCareActionStepSchema = z.object({
 
 export const updateCareActionStepSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
+  bucket: careBucketSchema.optional().nullable(),
   description: z.string().trim().max(2000).optional().nullable(),
   instructions: z.string().trim().max(2000).optional().nullable(),
   targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
@@ -199,6 +206,40 @@ export const updateCareActionStepSchema = z.object({
 export const updateDailyActionStepSchema = z.object({
   status: z.enum(['PENDING', 'COMPLETED', 'SKIPPED', 'PARTIALLY_COMPLETED', 'UNCLEAR']).optional(),
   notes: z.string().optional()
+})
+
+export const dogDailyTaskIdParamSchema = z.object({
+  id: z.string().uuid(),
+  taskId: z.string().uuid()
+})
+
+export const dogDailyLogIdParamSchema = z.object({
+  id: z.string().uuid(),
+  logId: z.string().uuid()
+})
+
+export const updateDailyTaskSchema = z.object({
+  status: z.enum(['PENDING', 'COMPLETED', 'SKIPPED', 'PARTIALLY_COMPLETED', 'UNCLEAR']).optional(),
+  notes: z.string().optional(),
+  actualReps: z.coerce.number().int().min(0).max(999).nullable().optional(),
+  actualDurationSeconds: z.coerce.number().int().min(0).max(86400).nullable().optional(),
+  needsReview: z.boolean().optional()
+})
+
+export const createDailyTaskSchema = z.object({
+  dailyCareLogId: z.string().uuid().optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  bucket: careBucketSchema,
+  name: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(2000).optional().nullable(),
+  notes: z.string().optional().nullable(),
+  targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
+  targetDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable()
+})
+
+export const reviewDailyTaskSchema = z.object({
+  accept: z.boolean(),
+  status: z.enum(['PENDING', 'COMPLETED', 'SKIPPED', 'PARTIALLY_COMPLETED', 'UNCLEAR']).optional()
 })
 
 export const calendarQuerySchema = z.object({
