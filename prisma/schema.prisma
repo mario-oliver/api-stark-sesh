@@ -236,6 +236,7 @@ model CareActionStep {
 
   careAction            CareAction            @relation(fields: [careActionId], references: [id], onDelete: Cascade)
   dailyCareActionSteps  DailyCareActionStep[]
+  dailyTasks            DailyTask[]
 
   @@index([careActionId])
   @@index([careActionId, isActive, sortOrder])
@@ -421,6 +422,7 @@ model DailyTask {
   completedBy    User?        @relation("DailyTaskCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
   substitutedFor DailyTask?   @relation("TaskSubstitution", fields: [substitutedForTaskId], references: [id], onDelete: SetNull)
   substitutions  DailyTask[]  @relation("TaskSubstitution")
+  careActionStep CareActionStep? @relation(fields: [careActionStepId], references: [id], onDelete: SetNull)
 
   @@index([dailyCareLogId])
   @@index([dailyCareLogId, bucket])
