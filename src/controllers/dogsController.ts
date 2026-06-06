@@ -15,7 +15,8 @@ import { resolveTodayLog } from '../services/dailyCare/resolveTodayLog.js'
 import { todayUtcDateString } from '../services/dailyCare/dateUtils.js'
 import { createDogWithDefaultPlan } from '../services/carePlans/createDogWithDefaultPlan.js'
 import { DEFAULT_MOBILITY_STRENGTH_PLAN_NAME } from '../services/carePlans/defaultMobilityStrengthPlan.js'
-import { assertPhotoKeyOwnedByUser } from '../services/s3/dogPhotos.js'
+import { assertPhotoKeyOwnedByUser, streamDogPhoto } from '../services/s3/dogPhotos.js'
+import { isS3Ready } from '../config/s3.js'
 import { normalizeShareCode } from '../lib/shareCode.js'
 
 function validatePhotoKeyForUser(photoKey: string | null | undefined, userId: string) {
@@ -167,6 +168,34 @@ export class DogsController {
       includeShareCode: true
     })
     return sendSuccess(reply, serialized)
+  }
+
+  async getDogPhoto(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id } = request.params as { id: string }
+
+    const dog = await getDogForMember(id, request.user.id)
+    if (!dog) {
+      return sendNotFound(reply, 'Dog not found')
+    }
+
+    if (!dog.photoKey?.trim()) {
+      return sendNotFound(reply, 'Dog has no photo')
+    }
+
+    if (!isS3Ready()) {
+      return sendError(reply, 'Photo storage is not configured', 503)
+    }
+
+    try {
+      const { body, contentType } = await streamDogPhoto(dog.photoKey)
+      return reply
+        .header('Content-Type', contentType)
+        .header('Cache-Control', 'private, max-age=300')
+        .send(body)
+    } catch (err) {
+      request.log.error(err, 'Failed to stream dog photo')
+      return sendError(reply, 'Could not load photo', 502)
+    }
   }
 
   async previewJoin(request: AuthenticatedRequest, reply: FastifyReply) {

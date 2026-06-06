@@ -78,6 +78,11 @@ export default async function dogRoutes(
     handler: async (request, reply) => dogs.getDog(request as AuthenticatedRequest, reply)
   })
 
+  fastify.get('/:id/photo', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) => dogs.getDogPhoto(request as AuthenticatedRequest, reply)
+  })
+
   fastify.patch('/:id', {
     preHandler: [validateParams(dogIdParamSchema), validate(updateDogSchema)],
     handler: async (request, reply) => dogs.updateDog(request as AuthenticatedRequest, reply)
