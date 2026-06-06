@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma.js'
 import { actionAppliesOnDate } from './actionAppliesOnDate.js'
 import { formatCalendarDate, parseCalendarDate } from './dateUtils.js'
+import { serializeDog } from '../../lib/serializeDog.js'
 import { syncDailyCareActionSteps } from './syncDailyCareActionSteps.js'
 import { syncDailyTasks } from './syncDailyTasks.js'
 import { serializeDailyCareAction } from './serializeDailyCare.js'
@@ -151,7 +152,7 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
     }
   })
 
-  const dog = await prisma.dog.findUniqueOrThrow({ where: { id: dogId } })
+  const dog = await serializeDog(await prisma.dog.findUniqueOrThrow({ where: { id: dogId } }))
   const dailyCareActions = await Promise.all(log.dailyCareActions.map(serializeDailyCareAction))
   const tasks = await Promise.all(
     log.dailyTasks.map(t => serializeDailyTask(t as DailyTaskWithRelations))

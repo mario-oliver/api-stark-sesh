@@ -221,8 +221,7 @@ export class DogsController {
 
     const date = query.date ?? todayUtcDateString()
     const payload = await resolveTodayLog(id, date)
-    const dog = await serializeDog(payload.dog)
-    return sendSuccess(reply, { ...payload, dog })
+    return sendSuccess(reply, payload)
   }
 
   async addMember(request: AuthenticatedRequest, reply: FastifyReply) {
