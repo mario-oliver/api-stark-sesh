@@ -4,6 +4,7 @@ export type CareActionStepRow = {
   id: string
   careActionId: string
   name: string
+  bucket?: string | null
   description: string | null
   instructions: string | null
   targetReps: number | null
@@ -22,6 +23,7 @@ export async function serializeCareActionStep(step: CareActionStepRow) {
     id: step.id,
     careActionId: step.careActionId,
     name: step.name,
+    bucket: step.bucket ?? null,
     description: step.description,
     instructions: step.instructions,
     targetReps: step.targetReps,

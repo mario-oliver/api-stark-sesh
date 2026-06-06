@@ -1,4 +1,4 @@
-import type { TodayActionContext } from './types.js'
+import type { TodayActionContext, TodayTaskContext } from './types.js'
 
 export function buildCareExtractionPrompt(args: {
   dogName: string
@@ -7,39 +7,51 @@ export function buildCareExtractionPrompt(args: {
   userName: string
   date: string
   actions: TodayActionContext[]
+  tasks: TodayTaskContext[]
   transcript: string
 }) {
   const actionLines =
     args.actions.length === 0
-      ? 'No scheduled care actions for today.'
+      ? 'No legacy scheduled care actions.'
       : args.actions
           .map(
             (a, i) =>
-              `${i + 1}. dailyCareActionId=${a.id}, name=${a.name}, category=${a.category}, status=${a.status}, instructions=${a.instructions ?? '-'}`
+              `${i + 1}. dailyCareActionId=${a.id}, name=${a.name}, category=${a.category}, status=${a.status}`
+          )
+          .join('\n')
+
+  const taskLines =
+    args.tasks.length === 0
+      ? 'No daily tasks for today.'
+      : args.tasks
+          .map(
+            (t, i) =>
+              `${i + 1}. dailyTaskId=${t.id}, name=${t.name}, bucket=${t.bucket}, status=${t.status}, source=${t.source}`
           )
           .join('\n')
 
   const system = [
     'You extract structured dog physical therapy care updates from caregiver voice transcripts.',
-    'Return ONLY valid JSON with keys: dailyActionUpdates, observations, caregiverNote, needsReview.',
-    'Map spoken updates ONLY to the provided dailyCareActionId values when there is a clear match.',
-    'Mark status "completed" only when completion is clearly stated.',
-    'Mark status "skipped" only when the caregiver clearly says they skipped the action.',
-    'Use status "unclear" or needsReview true when uncertain.',
-    'Create observations for symptoms, mobility issues, pain, stiffness, weakness, appetite, bathroom, or general health notes.',
-    'Do NOT diagnose, recommend medication, prescribe exercises, or suggest new treatment plans.',
-    'Do NOT invent exercises or actions not in the care plan.',
-    'tolerance must be one of: good, okay, poor, painful, unknown.',
-    'observation type must be one of: slipping, limping, weakness, stiffness, pain, low_energy, appetite, bathroom, medication, general_note.',
-    'observation severity must be one of: mild, moderate, severe, unknown.',
-    'dailyActionUpdates items must include: dailyCareActionId, status, completed, notes (optional), tolerance (optional), issueObserved (optional), confidence (optional).'
+    'Return ONLY valid JSON with keys: matchedTaskUpdates, adHocTasks, observations, bucketHints, caregiverNote, needsReview, dailyActionUpdates.',
+    'Prefer matchedTaskUpdates using dailyTaskId when the caregiver clearly refers to an existing task.',
+    'Create adHocTasks for novel activities (e.g. "walked stairs instead of ramp") with source plan_variation when substituting, or llm_extracted for new items.',
+    'Set substitutedForTaskId when a new task replaces a planned one.',
+    'Set needsReview true when substitution occurs, confidence is low, or interpretation is uncertain.',
+    'Create observations for symptoms, mobility issues, pain, stiffness, appetite, mood, rest quality.',
+    'Do NOT diagnose, recommend medication, or add items to the recurring care plan.',
+    'Never auto-promote ad hoc tasks to the plan.',
+    'bucket values: activity, mobility, recovery.',
+    'matchedTaskUpdates status: completed, skipped, partially_completed, unclear, pending.',
+    'observation type: slipping, limping, weakness, stiffness, pain, low_energy, appetite, bathroom, medication, general_note.'
   ].join(' ')
 
   const user = [
     `Dog: ${args.dogName} (id=${args.dogId})`,
     `Caregiver: ${args.userName} (id=${args.userId})`,
     `Date: ${args.date}`,
-    "Today's care actions:",
+    "Today's daily tasks (primary — use dailyTaskId):",
+    taskLines,
+    'Legacy care actions (fallback — use dailyCareActionId only if no task match):',
     actionLines,
     'Transcript:',
     args.transcript

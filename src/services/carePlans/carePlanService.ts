@@ -1,17 +1,20 @@
 import { prisma } from '../../lib/prisma.js'
+import { categoryToBucket } from './categoryToBucket.js'
+import { serializeCareActionStep, type CareActionStepRow } from './serializeCareActionStep.js'
+import { actionAppliesOnDate } from '../dailyCare/actionAppliesOnDate.js'
+import { formatCalendarDate, parseCalendarDate } from '../dailyCare/dateUtils.js'
 import type {
   CareActionCategory,
   CareActionFrequency,
-  CareActionTimeOfDay
+  CareActionTimeOfDay,
+  CareBucket
 } from '../../generated/client.js'
-import { actionAppliesOnDate } from '../dailyCare/actionAppliesOnDate.js'
-import { formatCalendarDate, parseCalendarDate } from '../dailyCare/dateUtils.js'
-import { serializeCareActionStep, type CareActionStepRow } from './serializeCareActionStep.js'
 
 export type CreateCareActionInput = {
   name: string
   description?: string | null
   category: CareActionCategory
+  bucket?: CareBucket | null
   frequency: CareActionFrequency
   timeOfDay?: CareActionTimeOfDay | null
   targetReps?: number | null
@@ -24,6 +27,7 @@ export type UpdateCareActionInput = Partial<CreateCareActionInput>
 
 export type CreateCareActionStepInput = {
   name: string
+  bucket?: CareBucket | null
   description?: string | null
   instructions?: string | null
   targetReps?: number | null
@@ -41,6 +45,7 @@ type CareActionRow = {
   name: string
   description: string | null
   category: CareActionCategory
+  bucket?: CareBucket | null
   frequency: CareActionFrequency
   timeOfDay: CareActionTimeOfDay | null
   targetReps: number | null
@@ -69,6 +74,7 @@ async function serializeCareAction(action: CareActionRow) {
     name: action.name,
     description: action.description,
     category: action.category,
+    bucket: action.bucket,
     frequency: action.frequency,
     timeOfDay: action.timeOfDay,
     targetReps: action.targetReps,
@@ -159,6 +165,7 @@ export async function createCareAction(dogId: string, input: CreateCareActionInp
       name: input.name,
       description: input.description ?? null,
       category: input.category,
+      bucket: input.bucket ?? categoryToBucket(input.category),
       frequency: input.frequency,
       timeOfDay: input.timeOfDay ?? null,
       targetReps: input.targetReps ?? null,
@@ -197,6 +204,7 @@ export async function createCareActionWithSteps(
         name: actionInput.name,
         description: actionInput.description ?? null,
         category: actionInput.category,
+        bucket: actionInput.bucket ?? categoryToBucket(actionInput.category),
         frequency: actionInput.frequency,
         timeOfDay: actionInput.timeOfDay ?? null,
         targetReps: actionInput.targetReps ?? null,
@@ -211,6 +219,10 @@ export async function createCareActionWithSteps(
         data: steps.map((step, index) => ({
           careActionId: created.id,
           name: step.name,
+          bucket:
+            step.bucket ??
+            actionInput.bucket ??
+            categoryToBucket(actionInput.category),
           description: step.description ?? null,
           instructions: step.instructions ?? null,
           targetReps: step.targetReps ?? null,
@@ -251,6 +263,7 @@ export async function updateCareAction(
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.category !== undefined && { category: input.category }),
+      ...(input.bucket !== undefined && { bucket: input.bucket }),
       ...(input.frequency !== undefined && { frequency: input.frequency }),
       ...(input.timeOfDay !== undefined && { timeOfDay: input.timeOfDay }),
       ...(input.targetReps !== undefined && { targetReps: input.targetReps }),

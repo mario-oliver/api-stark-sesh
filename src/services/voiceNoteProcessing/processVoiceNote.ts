@@ -1,8 +1,9 @@
 import { prisma } from '../../lib/prisma.js'
+import { computeBucketScores } from '../bucketScoring/computeBucketScores.js'
 import { formatCalendarDate } from '../dailyCare/dateUtils.js'
 import { applyCareExtraction } from '../careExtraction/applyCareExtraction.js'
 import { extractCareFromTranscript } from '../careExtraction/extractCareFromTranscript.js'
-import type { TodayActionContext } from '../careExtraction/types.js'
+import type { TodayActionContext, TodayTaskContext } from '../careExtraction/types.js'
 
 export async function processVoiceNote(voiceNoteId: string) {
   const voiceNote = await prisma.voiceNote.findUniqueOrThrow({
@@ -14,7 +15,8 @@ export async function processVoiceNote(voiceNoteId: string) {
         include: {
           dailyCareActions: {
             include: { careAction: true }
-          }
+          },
+          dailyTasks: true
         }
       }
     }
@@ -32,6 +34,15 @@ export async function processVoiceNote(voiceNoteId: string) {
     instructions: a.careAction.instructions
   }))
 
+  const tasks: TodayTaskContext[] = voiceNote.dailyCareLog.dailyTasks.map(t => ({
+    id: t.id,
+    name: t.nameSnapshot,
+    bucket: t.bucket,
+    status: t.status,
+    source: t.source,
+    instructions: t.instructionsSnapshot
+  }))
+
   const userName =
     [voiceNote.user.firstName, voiceNote.user.lastName].filter(Boolean).join(' ') ||
     voiceNote.user.email
@@ -43,6 +54,7 @@ export async function processVoiceNote(voiceNoteId: string) {
     userName,
     date: formatCalendarDate(voiceNote.dailyCareLog.date),
     actions,
+    tasks,
     transcript: voiceNote.transcript
   })
 
@@ -53,4 +65,10 @@ export async function processVoiceNote(voiceNoteId: string) {
     userId: voiceNote.userId,
     extraction
   })
+
+  try {
+    await computeBucketScores(voiceNote.dailyCareLogId)
+  } catch (err) {
+    console.error('Bucket scoring failed after voice note processing:', err)
+  }
 }

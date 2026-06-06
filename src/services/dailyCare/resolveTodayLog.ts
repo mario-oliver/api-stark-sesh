@@ -2,7 +2,17 @@ import { prisma } from '../../lib/prisma.js'
 import { actionAppliesOnDate } from './actionAppliesOnDate.js'
 import { formatCalendarDate, parseCalendarDate } from './dateUtils.js'
 import { syncDailyCareActionSteps } from './syncDailyCareActionSteps.js'
+import { syncDailyTasks } from './syncDailyTasks.js'
 import { serializeDailyCareAction } from './serializeDailyCare.js'
+import {
+  bucketProgress,
+  dailyTaskInclude,
+  parseBucketScores,
+  serializeDailyTask,
+  serializeObservation,
+  type DailyTaskWithRelations
+} from './serializeDailyTask.js'
+import type { CareBucket } from '../../generated/client.js'
 
 const dailyActionInclude = {
   orderBy: { createdAt: 'asc' as const },
@@ -105,8 +115,16 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
   }
 
   await syncDailyCareActionSteps(dailyLog.id)
+  await syncDailyTasks(dailyLog.id)
 
   return loadTodayPayload(dogId, dailyLog.id)
+}
+
+function groupByBucket<T extends { bucket: string | null }>(
+  items: T[],
+  bucket: CareBucket
+): T[] {
+  return items.filter(i => i.bucket === bucket)
 }
 
 export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
@@ -114,6 +132,10 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
     where: { id: dailyCareLogId },
     include: {
       dailyCareActions: dailyActionInclude,
+      dailyTasks: {
+        orderBy: [{ bucket: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+        include: dailyTaskInclude
+      },
       voiceNotes: {
         orderBy: { createdAt: 'desc' },
         include: {
@@ -131,6 +153,22 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
 
   const dog = await prisma.dog.findUniqueOrThrow({ where: { id: dogId } })
   const dailyCareActions = await Promise.all(log.dailyCareActions.map(serializeDailyCareAction))
+  const tasks = await Promise.all(
+    log.dailyTasks.map(t => serializeDailyTask(t as DailyTaskWithRelations))
+  )
+  const observations = log.healthObservations.map(serializeObservation)
+
+  const activityTasks = tasks.filter(t => t.bucket === 'ACTIVITY')
+  const mobilityTasks = tasks.filter(t => t.bucket === 'MOBILITY')
+  const recoveryTasks = tasks.filter(t => t.bucket === 'RECOVERY')
+
+  const bucketScores = parseBucketScores(log.bucketScores)
+  const latestVoiceNote = log.voiceNotes[0] ?? null
+
+  const voiceNotes = log.voiceNotes.map(note => ({
+    ...note,
+    createdAt: note.createdAt.toISOString()
+  }))
 
   const completed = dailyCareActions.filter(a => a.status === 'COMPLETED').length
   const total = dailyCareActions.length
@@ -141,16 +179,32 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
     dailyLog: {
       id: log.id,
       summary: log.summary,
+      bucketScores,
+      scoreComputedAt: log.scoreComputedAt?.toISOString() ?? null,
+      scoreInputVersion: log.scoreInputVersion,
+      latestVoiceNoteAt: latestVoiceNote?.createdAt.toISOString() ?? null,
       dailyCareActions,
-      voiceNotes: log.voiceNotes.map(note => ({
-        ...note,
-        createdAt: note.createdAt.toISOString()
-      })),
-      healthObservations: log.healthObservations.map(obs => ({
-        ...obs,
-        observedAt: obs.observedAt?.toISOString() ?? null,
-        createdAt: obs.createdAt.toISOString()
-      }))
+      voiceNotes,
+      healthObservations: observations
+    },
+    buckets: {
+      activity: {
+        tasks: activityTasks,
+        observations: groupByBucket(observations, 'ACTIVITY'),
+        progress: bucketProgress(activityTasks),
+        score: bucketScores?.activity ?? null
+      },
+      mobility: {
+        tasks: mobilityTasks,
+        observations: groupByBucket(observations, 'MOBILITY'),
+        progress: bucketProgress(mobilityTasks),
+        score: bucketScores?.mobility ?? null
+      },
+      recovery: {
+        tasks: recoveryTasks,
+        observations: groupByBucket(observations, 'RECOVERY'),
+        score: bucketScores?.recovery ?? null
+      }
     },
     progress: { completed, total }
   }
