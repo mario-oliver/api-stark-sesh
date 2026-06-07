@@ -53,22 +53,24 @@ export class VoiceNotesController {
       const prompt = query.prompt?.trim() || undefined
       const { text } = await transcribe(fileBuffer, { prompt })
 
+      if (!text.trim()) {
+        return sendError(reply, 'No speech detected in recording', 400)
+      }
+
       const voiceNote = await prisma.voiceNote.create({
         data: {
           dogId,
           dailyCareLogId: dailyLog.id,
           userId: request.user.id,
           transcript: text,
-          processingStatus: text ? 'TRANSCRIBED' : 'PENDING'
+          processingStatus: 'TRANSCRIBED'
         },
         include: {
           user: { select: { id: true, email: true, firstName: true, lastName: true } }
         }
       })
 
-      if (text) {
-        await enqueueVoiceNoteProcessingJob(voiceNote.id, { source: 'transcribe' })
-      }
+      await enqueueVoiceNoteProcessingJob(voiceNote.id, { source: 'transcribe' })
 
       const refreshed = await resolveTodayLog(dogId, date)
 
