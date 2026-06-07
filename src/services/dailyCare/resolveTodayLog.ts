@@ -45,6 +45,12 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
     throw new Error('Invalid date format. Use YYYY-MM-DD.')
   }
 
+  // Empty-transcript notes were saved as PENDING with no processing job; mark them terminal.
+  await prisma.voiceNote.updateMany({
+    where: { dogId, processingStatus: 'PENDING', transcript: '' },
+    data: { processingStatus: 'FAILED' }
+  })
+
   const plan = await prisma.carePlan.findFirst({
     where: { dogId, isActive: true },
     include: {

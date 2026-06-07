@@ -6,12 +6,16 @@ import multipart from '@fastify/multipart'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import rateLimit from '@fastify/rate-limit'
-import { protectedRoutes } from './plugins/routeGroups.js'
+import { protectedRoutes, publicRoutes } from './plugins/routeGroups.js'
 import config from './config/config.js'
 
 import usersRoutes from './routes/userRoutes.js'
 import dogRoutes from './routes/dogRoutes.js'
 import uploadsRoutes from './routes/uploadsRoutes.js'
+import stripeRoutes, { stripeWebhookRoutes } from './routes/stripeRoutes.js'
+import appleRoutes, { appleNotificationRoutes } from './routes/appleRoutes.js'
+import subscriptionRoutes from './routes/subscriptionRoutes.js'
+import clerkWebhookRoutes from './routes/clerkWebhookRoutes.js'
 
 import errorHandler from './plugins/errorHandler.js'
 import { clerkPlugin } from '@clerk/fastify'
@@ -94,6 +98,10 @@ async function registerPlugins(fastify: ReturnType<typeof Fastify>) {
         {
           name: 'dogs',
           description: 'Dog care plan and daily log endpoints'
+        },
+        {
+          name: 'billing',
+          description: 'Subscription and billing endpoints'
         }
       ]
     }
@@ -137,11 +145,24 @@ async function registerRoutes(fastify: ReturnType<typeof Fastify>) {
   const protectedRouteConfigs = [
     { prefix: '/v1/users', routes: usersRoutes },
     { prefix: '/v1/dogs', routes: dogRoutes },
-    { prefix: '/v1/uploads', routes: uploadsRoutes }
+    { prefix: '/v1/uploads', routes: uploadsRoutes },
+    { prefix: '/v1/stripe', routes: stripeRoutes },
+    { prefix: '/v1/apple', routes: appleRoutes },
+    { prefix: '/v1/subscription', routes: subscriptionRoutes }
   ]
 
-  for (const config of protectedRouteConfigs) {
-    await protectedRoutes(fastify, config)
+  for (const routeConfig of protectedRouteConfigs) {
+    await protectedRoutes(fastify, routeConfig)
+  }
+
+  const publicRouteConfigs = [
+    { prefix: '/v1/stripe', routes: stripeWebhookRoutes },
+    { prefix: '/v1/apple', routes: appleNotificationRoutes },
+    { prefix: '/v1/webhooks/clerk', routes: clerkWebhookRoutes }
+  ]
+
+  for (const routeConfig of publicRouteConfigs) {
+    await publicRoutes(fastify, routeConfig)
   }
 }
 
