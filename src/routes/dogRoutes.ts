@@ -43,6 +43,8 @@ import {
   exerciseAgentSessionIdParamSchema,
   sendExerciseAgentMessageSchema
 } from '../schemas/exerciseAgentSchemas.js'
+import { createSpriteSessionSchema } from '../schemas/spriteGenSchemas.js'
+import { SpriteGenController } from '../controllers/spriteGenController.js'
 
 export default async function dogRoutes(
   fastify: FastifyInstance,
@@ -53,6 +55,7 @@ export default async function dogRoutes(
   const carePlans = new CarePlansController()
   const voiceNotes = new VoiceNotesController()
   const exerciseAgent = new ExerciseAgentController()
+  const spriteGen = new SpriteGenController()
 
   fastify.get('/', {
     handler: async (request, reply) => dogs.listDogs(request as AuthenticatedRequest, reply)
@@ -264,5 +267,39 @@ export default async function dogRoutes(
     preHandler: [validateParams(dogObsIdParamSchema), validate(updateObservationSchema)],
     handler: async (request, reply) =>
       dailyCare.updateObservation(request as AuthenticatedRequest, reply)
+  })
+
+  // ── Sprite Generation ────────────────────────────────────────────────────────
+
+  fastify.post('/:id/sprite-sessions', {
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    preHandler: [validateParams(dogIdParamSchema), validate(createSpriteSessionSchema)],
+    handler: async (request, reply) =>
+      spriteGen.createSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.get('/:id/sprite-sessions/:sessionId', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) =>
+      spriteGen.getSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.delete('/:id/sprite-sessions/:sessionId', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) =>
+      spriteGen.cancelSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.get('/:id/sprite-set', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) =>
+      spriteGen.getSpriteSet(request as AuthenticatedRequest, reply)
+  })
+
+  // Serves individual frames — cached immutably in browser
+  fastify.get('/:id/sprites/:animation/:frame', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) =>
+      spriteGen.streamFrame(request as AuthenticatedRequest, reply)
   })
 }

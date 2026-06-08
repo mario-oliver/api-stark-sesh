@@ -188,12 +188,14 @@ model Dog {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members                DogMember[]
-  carePlans              CarePlan[]
-  dailyCareLogs          DailyCareLog[]
-  voiceNotes             VoiceNote[]
-  healthObservations     HealthObservation[]
-  exerciseAgentSessions  ExerciseAgentSession[]
+  members                   DogMember[]
+  carePlans                 CarePlan[]
+  dailyCareLogs             DailyCareLog[]
+  voiceNotes                VoiceNote[]
+  healthObservations        HealthObservation[]
+  exerciseAgentSessions     ExerciseAgentSession[]
+  spriteSets                SpriteSet[]
+  spriteGenerationSessions  SpriteGenerationSession[]
 
   @@index([name])
 }
@@ -484,4 +486,96 @@ model ExerciseAgentSession {
   @@index([dogId])
   @@index([dogId, userId])
   @@index([status])
+}
+
+// ── Sprite Generation ──────────────────────────────────────────────────────────
+
+enum SpriteGenerationStatus {
+  PENDING
+  RUNNING
+  AWAITING_INPUT
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum SpriteGenStep {
+  NORMALIZE_INPUT
+  BUILD_BASE_REFERENCE
+  GENERATE_FRAMES
+  POST_PROCESS
+  VALIDATE
+  UPLOAD
+  FINALIZE
+}
+
+enum SpriteGenJobStatus {
+  PENDING
+  RUNNING
+  RETRY
+  COMPLETED
+  FAILED
+}
+
+model SpriteSet {
+  id             String   @id @default(uuid())
+  dogId          String
+  userId         String
+  status         SpriteGenerationStatus @default(COMPLETED)
+  storagePrefix  String
+  manifest       Json
+  styleVersion   String   @default("v1")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  dog                   Dog                    @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  generationSessions    SpriteGenerationSession[]
+
+  @@index([dogId, isActive])
+  @@index([dogId])
+}
+
+model SpriteGenerationSession {
+  id               String                 @id @default(uuid())
+  dogId            String
+  userId           String
+  status           SpriteGenerationStatus @default(PENDING)
+  sourcePhotoKey   String
+  breedInput       String
+  normalizedBreed  String?
+  prompt           String?
+  currentStep      SpriteGenStep?
+  steps            Json                   @default("{}")
+  progress         Float                  @default(0)
+  spriteSetId      String?
+  error            String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  dog       Dog        @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  spriteSet SpriteSet? @relation(fields: [spriteSetId], references: [id], onDelete: SetNull)
+  jobs      SpriteGenerationJob[]
+
+  @@index([dogId])
+  @@index([dogId, userId])
+  @@index([status])
+}
+
+model SpriteGenerationJob {
+  id             String             @id @default(uuid())
+  sessionId      String
+  status         SpriteGenJobStatus @default(PENDING)
+  attempts       Int                @default(0)
+  nextRunAt      DateTime           @default(now())
+  leaseExpiresAt DateTime?
+  lastError      String?
+  payload        Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  session SpriteGenerationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRunAt])
+  @@index([sessionId])
 }

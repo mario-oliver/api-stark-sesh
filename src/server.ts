@@ -5,6 +5,10 @@ import {
   startVoiceNoteProcessingWorker,
   stopVoiceNoteProcessingWorker
 } from './services/voiceNoteProcessing/queue.js'
+import {
+  startSpriteGenerationWorker,
+  stopSpriteGenerationWorker
+} from './services/spriteGen/queue.js'
 
 let fastify: FastifyInstance
 let isShuttingDown = false
@@ -12,6 +16,7 @@ let isShuttingDown = false
 const start = async () => {
   fastify = await Fastify()
   startVoiceNoteProcessingWorker()
+  startSpriteGenerationWorker()
 
   try {
     await fastify.listen({
@@ -45,6 +50,7 @@ const gracefulShutdown = async (signal: string) => {
   try {
     fastify.log.info(`Received ${signal}. Starting graceful shutdown...`)
     stopVoiceNoteProcessingWorker()
+    stopSpriteGenerationWorker()
     await fastify.close()
     fastify.log.info('Server closed successfully')
     clearTimeout(forceExitTimer)
