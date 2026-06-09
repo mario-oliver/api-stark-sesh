@@ -5,7 +5,7 @@ import {
   deactivateCareAction,
   updateCareAction
 } from '../carePlans/carePlanService.js'
-import { runAuditGraph } from './graph.js'
+import { runAuditGraph } from './graphRunner.js'
 import { loadAuditContext } from './programContext.js'
 import {
   auditReportSchema,
