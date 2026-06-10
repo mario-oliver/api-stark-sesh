@@ -2,10 +2,10 @@ import type { FastifyReply } from 'fastify'
 import { assertDogMemberAccess } from '../lib/dogAccess.js'
 import type { AuthenticatedRequest } from '../types/auth.js'
 import {
-  cancelProgramAuditSession,
-  confirmProgramAuditSession,
-  createProgramAuditSession,
-  getProgramAuditSession,
+  cancelAuditSession,
+  confirmAuditSession,
+  createAuditSession,
+  getAuditSession,
   sendProgramAuditMessage,
   serializeSession
 } from '../services/programAudit/sessionService.js'
@@ -25,7 +25,7 @@ export class ProgramAuditController {
     if (!member) return sendForbidden(reply, 'You do not have access to this dog')
 
     try {
-      const { session, error } = await createProgramAuditSession({
+      const { session, error } = await createAuditSession({
         dogId,
         userId: request.user.id
       })
@@ -44,7 +44,7 @@ export class ProgramAuditController {
     const member = await assertDogMemberAccess(dogId, request.user.id)
     if (!member) return sendForbidden(reply, 'You do not have access to this dog')
 
-    const session = await getProgramAuditSession({
+    const session = await getAuditSession({
       dogId,
       userId: request.user.id,
       sessionId
@@ -86,7 +86,7 @@ export class ProgramAuditController {
     if (!member) return sendForbidden(reply, 'You do not have access to this dog')
 
     try {
-      const { applied, changesApplied } = await confirmProgramAuditSession({
+      const { applied, changesApplied } = await confirmAuditSession({
         dogId,
         userId: request.user.id,
         sessionId,
@@ -113,7 +113,7 @@ export class ProgramAuditController {
     if (!member) return sendForbidden(reply, 'You do not have access to this dog')
 
     try {
-      await cancelProgramAuditSession({ dogId, userId: request.user.id, sessionId })
+      await cancelAuditSession({ dogId, userId: request.user.id, sessionId })
       return sendSuccess(reply, { cancelled: true })
     } catch {
       return sendNotFound(reply, 'Session not found')

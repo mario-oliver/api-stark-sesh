@@ -141,13 +141,13 @@ export async function restoreCareActions(
  * Deletes all test data for this fixture run.
  *
  * Dog deletion cascades: DogMember, CarePlan, CareAction, and
- * ProgramAuditSession. Users must be deleted separately.
+ * CareAgentSession. Users must be deleted separately.
  */
 export async function teardownFixture(
   prisma: TestPrisma,
   fixture: ProgramAuditFixture
 ): Promise<void> {
-  // Dog cascade handles DogMember, CarePlan, CareAction, ProgramAuditSession
+  // Dog cascade handles DogMember, CarePlan, CareAction, CareAgentSession
   await prisma.dog.deleteMany({ where: { id: fixture.dogId } })
   await prisma.user.deleteMany({ where: { id: { in: [fixture.ownerId, fixture.strangerId] } } })
 }

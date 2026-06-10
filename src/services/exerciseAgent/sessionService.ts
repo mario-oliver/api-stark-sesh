@@ -1,38 +1,69 @@
-import { prisma } from '../../lib/prisma.js'
-import type { ExerciseAgentSessionStatus } from '../../generated/client.js'
+import type { Prisma } from '../../generated/client.js'
 import { createCareAction } from '../carePlans/carePlanService.js'
+import {
+  commitCareAgentSession,
+  createCareAgentSession,
+  deleteCareAgentSession,
+  findCareAgentSession,
+  parseStoredMessages,
+  updateCareAgentSession,
+  type CareAgentSession,
+  type CareAgentSessionStatus
+} from '../careAgentSession/sessionRepository.js'
 import { runExerciseAgentGraph } from './graph.js'
 import { loadDogAgentContext } from './tools/routineContext.js'
 import {
   normalizeProposedExerciseInput,
   proposedExerciseSchema,
   type ProposedExercise,
+  type ResearchSnippet,
   type StoredMessage
 } from './types.js'
 
-function parseMessages(raw: unknown): StoredMessage[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter(
-    (m): m is StoredMessage =>
-      typeof m === 'object' &&
-      m !== null &&
-      'role' in m &&
-      'content' in m &&
-      (m.role === 'user' || m.role === 'assistant') &&
-      typeof m.content === 'string'
-  )
+/** This agent is the PLAN_BUILD entry into the unified CareAgentSession. */
+const KIND = 'PLAN_BUILD' as const
+
+// ── Draft envelope (PLAN_BUILD) ───────────────────────────────────────────────
+// The unified `draft` column folds the former `draft` (proposed exercise) and
+// `research` columns into one JSON envelope.
+
+type PlanBuildDraft = {
+  exercise: ProposedExercise | null
+  research: ResearchSnippet[]
+}
+
+function decodePlanBuildDraft(raw: unknown): PlanBuildDraft {
+  if (!raw || typeof raw !== 'object') return { exercise: null, research: [] }
+  const d = raw as Record<string, unknown>
+  let exercise: ProposedExercise | null = null
+  if (d.exercise) {
+    const parsed = proposedExerciseSchema.safeParse(
+      normalizeProposedExerciseInput(d.exercise)
+    )
+    if (parsed.success) exercise = parsed.data
+  }
+  const research = Array.isArray(d.research) ? (d.research as ResearchSnippet[]) : []
+  return { exercise, research }
+}
+
+function encodePlanBuildDraft(
+  exercise: ProposedExercise | null,
+  research: ResearchSnippet[]
+): Prisma.InputJsonValue | undefined {
+  if (!exercise && research.length === 0) return undefined
+  return { exercise: exercise ?? null, research } as Prisma.InputJsonValue
 }
 
 function mapGraphToStatus(
   questions: string[],
   draft: ProposedExercise | null
-): ExerciseAgentSessionStatus {
+): CareAgentSessionStatus {
   if (draft) return 'DRAFT_READY'
   if (questions.length > 0) return 'AWAITING_INPUT'
   return 'ACTIVE'
 }
 
-export async function createExerciseAgentSession(args: {
+export async function createExerciseSession(args: {
   dogId: string
   userId: string
   message: string
@@ -49,14 +80,13 @@ export async function createExerciseAgentSession(args: {
     graphResult = await runExerciseAgentGraph({ dogContext, messages })
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Agent failed'
-    const session = await prisma.exerciseAgentSession.create({
-      data: {
-        dogId: args.dogId,
-        userId: args.userId,
-        status: 'FAILED',
-        messages,
-        questions: []
-      }
+    const session = await createCareAgentSession({
+      dogId: args.dogId,
+      userId: args.userId,
+      kind: KIND,
+      status: 'FAILED',
+      messages,
+      questions: []
     })
     return { session, error }
   }
@@ -64,16 +94,14 @@ export async function createExerciseAgentSession(args: {
   const allMessages = graphResult.messages
   const status = mapGraphToStatus(graphResult.questions, graphResult.draft)
 
-  const session = await prisma.exerciseAgentSession.create({
-    data: {
-      dogId: args.dogId,
-      userId: args.userId,
-      status,
-      messages: allMessages,
-      questions: graphResult.questions.length > 0 ? graphResult.questions : undefined,
-      draft: graphResult.draft ?? undefined,
-      research: graphResult.research.length > 0 ? graphResult.research : undefined
-    }
+  const session = await createCareAgentSession({
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status,
+    messages: allMessages,
+    questions: graphResult.questions.length > 0 ? graphResult.questions : undefined,
+    draft: encodePlanBuildDraft(graphResult.draft, graphResult.research)
   })
 
   return { session, error: null }
@@ -85,13 +113,12 @@ export async function sendExerciseAgentMessage(args: {
   sessionId: string
   message: string
 }) {
-  const session = await prisma.exerciseAgentSession.findFirst({
-    where: {
-      id: args.sessionId,
-      dogId: args.dogId,
-      userId: args.userId,
-      status: { in: ['ACTIVE', 'AWAITING_INPUT', 'DRAFT_READY'] }
-    }
+  const session = await findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status: { in: ['ACTIVE', 'AWAITING_INPUT', 'DRAFT_READY'] }
   })
 
   if (!session) {
@@ -103,13 +130,14 @@ export async function sendExerciseAgentMessage(args: {
     throw new Error('Dog not found')
   }
 
-  const priorMessages = parseMessages(session.messages)
+  const prior = decodePlanBuildDraft(session.draft)
+  const priorMessages = parseStoredMessages(session.messages)
   const messages: StoredMessage[] = [
     ...priorMessages,
     { role: 'user', content: args.message.trim() }
   ]
 
-  const cachedResearch = Array.isArray(session.research) ? session.research : []
+  const cachedResearch = prior.research
   const skipResearch = session.status === 'DRAFT_READY' && cachedResearch.length > 0
 
   let graphResult
@@ -122,128 +150,114 @@ export async function sendExerciseAgentMessage(args: {
     })
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Agent failed'
-    await prisma.exerciseAgentSession.update({
-      where: { id: session.id },
-      data: { status: 'FAILED', messages }
+    const updated = await updateCareAgentSession(session.id, {
+      status: 'FAILED',
+      messages
     })
-    return { session: { ...session, status: 'FAILED' as const, messages }, error }
+    return { session: updated, error }
   }
 
   const status = mapGraphToStatus(graphResult.questions, graphResult.draft)
+  const newExercise = graphResult.draft ?? prior.exercise
+  const newResearch = graphResult.research.length > 0 ? graphResult.research : prior.research
 
-  const updated = await prisma.exerciseAgentSession.update({
-    where: { id: session.id },
-    data: {
-      status,
-      messages: graphResult.messages,
-      questions:
-        graphResult.questions.length > 0 ? graphResult.questions : undefined,
-      draft: graphResult.draft ?? session.draft ?? undefined,
-      research:
-        graphResult.research.length > 0 ? graphResult.research : session.research ?? undefined
-    }
+  const updated = await updateCareAgentSession(session.id, {
+    status,
+    messages: graphResult.messages,
+    questions: graphResult.questions.length > 0 ? graphResult.questions : undefined,
+    draft: encodePlanBuildDraft(newExercise, newResearch)
   })
 
   return { session: updated, error: null }
 }
 
-export async function getExerciseAgentSession(args: {
+export async function getExerciseSession(args: {
   dogId: string
   userId: string
   sessionId: string
 }) {
-  return prisma.exerciseAgentSession.findFirst({
-    where: {
-      id: args.sessionId,
-      dogId: args.dogId,
-      userId: args.userId
-    }
+  return findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND
   })
 }
 
-export async function confirmExerciseAgentSession(args: {
+export async function confirmExerciseSession(args: {
   dogId: string
   userId: string
   sessionId: string
   edits?: Partial<ProposedExercise>
 }) {
-  const session = await prisma.exerciseAgentSession.findFirst({
-    where: {
-      id: args.sessionId,
-      dogId: args.dogId,
-      userId: args.userId,
-      status: 'DRAFT_READY'
-    }
+  const session = await findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status: 'DRAFT_READY'
   })
 
   if (!session) {
     throw new Error('Session not found or draft not ready')
   }
 
-  const rawDraft = session.draft
-  if (!rawDraft || typeof rawDraft !== 'object') {
+  const { exercise } = decodePlanBuildDraft(session.draft)
+  if (!exercise) {
     throw new Error('No draft to confirm')
   }
 
-  const merged = { ...(rawDraft as object), ...(args.edits ?? {}) }
+  const merged = { ...exercise, ...(args.edits ?? {}) }
   const draft = proposedExerciseSchema.parse(normalizeProposedExerciseInput(merged))
 
   const { rationale: _r, safetyNotes: _s, researchSummary: _rs, ...actionFields } = draft
 
   const action = await createCareAction(args.dogId, actionFields)
 
-  await prisma.exerciseAgentSession.update({
-    where: { id: session.id },
-    data: { status: 'COMMITTED' }
+  await commitCareAgentSession(session.id, {
+    committedCarePlanId: action.carePlanId,
+    committedCareActionId: action.id
   })
 
   return { action, draft }
 }
 
-export async function cancelExerciseAgentSession(args: {
+export async function cancelExerciseSession(args: {
   dogId: string
   userId: string
   sessionId: string
 }) {
-  const session = await prisma.exerciseAgentSession.findFirst({
-    where: {
-      id: args.sessionId,
-      dogId: args.dogId,
-      userId: args.userId,
-      status: { notIn: ['COMMITTED'] }
-    }
+  const session = await findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status: { notIn: ['COMMITTED'] }
   })
 
   if (!session) {
     throw new Error('Session not found')
   }
 
-  await prisma.exerciseAgentSession.delete({ where: { id: session.id } })
+  await deleteCareAgentSession(session.id)
 }
 
 export function serializeSession(session: {
   id: string
   dogId: string
-  status: ExerciseAgentSessionStatus
+  status: CareAgentSession['status']
   messages: unknown
   draft: unknown
-  research: unknown
   questions: unknown
   createdAt: Date
   updatedAt: Date
 }) {
-  const messages = parseMessages(session.messages)
+  const messages = parseStoredMessages(session.messages)
   const questions = Array.isArray(session.questions)
     ? (session.questions as string[])
     : []
 
-  let draft: ProposedExercise | null = null
-  if (session.draft) {
-    const parsed = proposedExerciseSchema.safeParse(
-      normalizeProposedExerciseInput(session.draft)
-    )
-    if (parsed.success) draft = parsed.data
-  }
+  const { exercise, research } = decodePlanBuildDraft(session.draft)
 
   return {
     id: session.id,
@@ -251,8 +265,8 @@ export function serializeSession(session: {
     status: session.status,
     messages,
     questions,
-    draft,
-    research: session.research,
+    draft: exercise,
+    research,
     createdAt: session.createdAt.toISOString(),
     updatedAt: session.updatedAt.toISOString()
   }

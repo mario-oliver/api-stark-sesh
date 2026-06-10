@@ -79,19 +79,16 @@ enum DogSex {
   UNKNOWN
 }
 
-enum ExerciseAgentSessionStatus {
+enum CareAgentSessionKind {
+  DAILY_LOG
+  PLAN_BUILD
+  PLAN_AUDIT
+}
+
+enum CareAgentSessionStatus {
   ACTIVE
   AWAITING_INPUT
   DRAFT_READY
-  COMMITTED
-  FAILED
-}
-
-enum ProgramAuditSessionStatus {
-  ACTIVE
-  AWAITING_INPUT
-  REPORT_READY
-  PLAN_READY
   COMMITTED
   FAILED
 }
@@ -182,8 +179,7 @@ model Dog {
   dailyCareLogs             DailyCareLog[]
   voiceNotes                VoiceNote[]
   healthObservations        HealthObservation[]
-  exerciseAgentSessions     ExerciseAgentSession[]
-  programAuditSessions      ProgramAuditSession[]
+  careAgentSessions         CareAgentSession[]
   spriteSets                SpriteSet[]
   spriteGenerationSessions  SpriteGenerationSession[]
 
@@ -213,8 +209,9 @@ model CarePlan {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  dog     Dog          @relation(fields: [dogId], references: [id], onDelete: Cascade)
-  actions CareAction[]
+  dog                    Dog                @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  actions                CareAction[]
+  committedAgentSessions CareAgentSession[] @relation("CareAgentSessionCommittedCarePlan")
 
   @@index([dogId])
   @@index([dogId, isActive])
@@ -236,8 +233,9 @@ model CareAction {
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
 
-  carePlan          CarePlan          @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
-  dailyCareActions  DailyCareAction[]
+  carePlan               CarePlan           @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+  dailyCareActions       DailyCareAction[]
+  committedAgentSessions CareAgentSession[] @relation("CareAgentSessionCommittedCareAction")
 
   @@index([carePlanId])
   @@index([carePlanId, isActive, sortOrder])
@@ -329,6 +327,7 @@ model VoiceNote {
   user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   healthObservations HealthObservation[]
   processingJobs     VoiceNoteProcessingJob[]
+  careAgentSessions  CareAgentSession[]
 
   @@index([dogId])
   @@index([dailyCareLogId])
@@ -380,23 +379,40 @@ model HealthObservation {
   @@index([voiceNoteId])
 }
 
-model ExerciseAgentSession {
-  id        String                     @id @default(uuid())
-  dogId     String
-  userId    String
-  status    ExerciseAgentSessionStatus @default(ACTIVE)
-  messages  Json                       @default("[]")
-  draft     Json?
-  research  Json?
-  questions Json?
-  createdAt DateTime                   @default(now())
-  updatedAt DateTime                   @updatedAt
+// ── Conversational producer ─────────────────────────────────────────────────
+// One table for ALL conversational LLM flows (kind discriminator). Replaces the
+// two former per-agent session tables (exercise build = PLAN_BUILD, program
+// audit = PLAN_AUDIT). The draft stays JSON in the session; commit turns it into
+// durable rows and records the polymorphic commit FK(s). See
+// context.md#CareAgentSession.
+model CareAgentSession {
+  id          String                 @id @default(uuid())
+  dogId       String
+  userId      String
+  kind        CareAgentSessionKind
+  status      CareAgentSessionStatus @default(ACTIVE)
+  messages    Json                   @default("[]")
+  questions   Json?
+  draft       Json?
+  voiceNoteId String?
 
-  dog Dog @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  // Polymorphic commit FKs — set when the draft becomes durable rows.
+  committedCarePlanId   String?
+  committedCareActionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dog                 Dog         @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  voiceNote           VoiceNote?  @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
+  committedCarePlan   CarePlan?   @relation("CareAgentSessionCommittedCarePlan", fields: [committedCarePlanId], references: [id], onDelete: SetNull)
+  committedCareAction CareAction? @relation("CareAgentSessionCommittedCareAction", fields: [committedCareActionId], references: [id], onDelete: SetNull)
 
   @@index([dogId])
   @@index([dogId, userId])
+  @@index([dogId, kind])
   @@index([status])
+  @@index([voiceNoteId])
 }
 
 // ── Sprite Generation ──────────────────────────────────────────────────────────
@@ -491,20 +507,3 @@ model SpriteGenerationJob {
   @@index([sessionId])
 }
 
-model ProgramAuditSession {
-  id        String                    @id @default(uuid())
-  dogId     String
-  userId    String
-  status    ProgramAuditSessionStatus @default(ACTIVE)
-  messages  Json                      @default("[]")
-  report    Json?
-  plan      Json?
-  createdAt DateTime                  @default(now())
-  updatedAt DateTime                  @updatedAt
-
-  dog Dog @relation(fields: [dogId], references: [id], onDelete: Cascade)
-
-  @@index([dogId])
-  @@index([dogId, userId])
-  @@index([status])
-}
