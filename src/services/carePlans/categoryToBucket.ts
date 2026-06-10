@@ -11,7 +11,6 @@ export function observationTypeToBucket(type: HealthObservationType): CareBucket
     case 'LOW_ENERGY':
     case 'APPETITE':
     case 'BATHROOM':
-    case 'MEDICATION':
     case 'GENERAL_NOTE':
       return 'RECOVERY'
     default:

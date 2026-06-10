@@ -62,7 +62,6 @@ enum HealthObservationType {
   LOW_ENERGY
   APPETITE
   BATHROOM
-  MEDICATION
   GENERAL_NOTE
 }
 

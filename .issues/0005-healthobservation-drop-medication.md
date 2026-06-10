@@ -41,10 +41,15 @@ independent slice.
   build a new medication feature — meds are just an ordinary RECOVERY CareAction.
 
 ## Acceptance criteria
-- [ ] (machine) The generated `HealthObservationType` has no `MEDICATION` member.
-- [ ] (machine) `HealthObservationType.MEDICATION` (and any string `"MEDICATION"` used
+- [x] (machine) The generated `HealthObservationType` has no `MEDICATION` member.
+      → `src/schemas/healthObservationType.test.ts`; `grep MEDICATION src/generated` = 0.
+- [x] (machine) `HealthObservationType.MEDICATION` (and any string `"MEDICATION"` used
       as an observation type) absent from `src/`.
-- [ ] (machine) typecheck, lint, test, build exit 0.
+      → corrected grep = 0 uppercase MEDICATION in src (excl. the assertion test);
+      remaining lowercase "medication" is only "do not prescribe medication" prose.
+      NOTE: the issue's literal grep loop globs a non-existent path (`src/**/observation*`)
+      and is a NO-OP false-pass — flagged for the outer loop.
+- [x] (machine) typecheck, lint, test, build exit 0.
 
 ## Feedback Loops
 ```bash
@@ -56,7 +61,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by inner loop at preflight>`
+`ba39261076a91ef5fd87f0577935538600e5be78` (worktree `issue-0005-drop-medication`)
 
 ## Notes for agent
 Smallest slice in the epic. The only subtlety: a voice/extraction path may have mapped

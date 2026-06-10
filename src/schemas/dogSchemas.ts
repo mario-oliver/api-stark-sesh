@@ -72,7 +72,6 @@ export const createObservationSchema = z.object({
     'LOW_ENERGY',
     'APPETITE',
     'BATHROOM',
-    'MEDICATION',
     'GENERAL_NOTE'
   ]),
   bucket: careBucketSchema.optional(),
@@ -94,7 +93,6 @@ export const updateObservationSchema = z.object({
       'LOW_ENERGY',
       'APPETITE',
       'BATHROOM',
-      'MEDICATION',
       'GENERAL_NOTE'
     ])
     .optional(),
