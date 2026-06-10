@@ -58,7 +58,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by inner loop at preflight>`
+`ba39261076a91ef5fd87f0577935538600e5be78` (captured 2026-06-10; 4 real gates green at preflight)
 
 ## Notes for agent
 The bare-`needsReview` grep is intentionally noisy because the field name is shared —

@@ -1,67 +1,25 @@
 import { prisma } from '../../lib/prisma.js'
-import { computeBucketScores } from '../bucketScoring/computeBucketScores.js'
-import { formatCalendarDate } from '../dailyCare/dateUtils.js'
-import { applyCareExtraction } from '../careExtraction/applyCareExtraction.js'
-import { extractCareFromTranscript } from '../careExtraction/extractCareFromTranscript.js'
-import type { TodayActionContext, TodayTaskContext } from '../careExtraction/types.js'
 
+/**
+ * Voice-note processing is transcription-only (ADR-0002 move 5 / issue 0004).
+ *
+ * VoiceNote is a dumb artifact: audio + Whisper transcript + transcription status.
+ * The former one-shot care-extraction writer path (extract → apply → write
+ * `VoiceNote.extraction`) is gone — extraction is now conversational and lives in
+ * `CareAgentSession`. This worker only finalizes the transcription lifecycle.
+ */
 export async function processVoiceNote(voiceNoteId: string) {
   const voiceNote = await prisma.voiceNote.findUniqueOrThrow({
     where: { id: voiceNoteId },
-    include: {
-      dog: true,
-      user: true,
-      dailyCareLog: {
-        include: {
-          dailyCareActions: {
-            include: { careAction: true }
-          }
-        }
-      }
-    }
+    select: { id: true, transcript: true }
   })
 
   if (!voiceNote.transcript.trim()) {
     throw new Error('Voice note has no transcript')
   }
 
-  const actions: TodayActionContext[] = []
-
-  const tasks: TodayTaskContext[] = voiceNote.dailyCareLog.dailyCareActions.map(a => ({
-    id: a.id,
-    name: a.nameSnapshot,
-    bucket: a.bucket,
-    status: a.status,
-    source: a.source,
-    instructions: a.instructionsSnapshot ?? a.careAction?.instructions ?? null
-  }))
-
-  const userName =
-    [voiceNote.user.firstName, voiceNote.user.lastName].filter(Boolean).join(' ') ||
-    voiceNote.user.email
-
-  const extraction = await extractCareFromTranscript({
-    dogName: voiceNote.dog.name,
-    dogId: voiceNote.dogId,
-    userId: voiceNote.userId,
-    userName,
-    date: formatCalendarDate(voiceNote.dailyCareLog.date),
-    actions,
-    tasks,
-    transcript: voiceNote.transcript
+  await prisma.voiceNote.update({
+    where: { id: voiceNote.id },
+    data: { processingStatus: 'PROCESSED' }
   })
-
-  await applyCareExtraction({
-    voiceNoteId: voiceNote.id,
-    dogId: voiceNote.dogId,
-    dailyCareLogId: voiceNote.dailyCareLogId,
-    userId: voiceNote.userId,
-    extraction
-  })
-
-  try {
-    await computeBucketScores(voiceNote.dailyCareLogId)
-  } catch (err) {
-    console.error('Bucket scoring failed after voice note processing:', err)
-  }
 }
