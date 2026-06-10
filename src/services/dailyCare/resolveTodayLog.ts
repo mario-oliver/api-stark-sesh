@@ -2,23 +2,20 @@ import { prisma } from '../../lib/prisma.js'
 import { actionAppliesOnDate } from './actionAppliesOnDate.js'
 import { formatCalendarDate, parseCalendarDate } from './dateUtils.js'
 import { serializeDog } from '../../lib/serializeDog.js'
-import { syncDailyTasks } from './syncDailyTasks.js'
-import { serializeDailyCareAction } from './serializeDailyCare.js'
 import {
   bucketProgress,
-  dailyTaskInclude,
   parseBucketScores,
-  serializeDailyTask,
-  serializeObservation,
-  type DailyTaskWithRelations
-} from './serializeDailyTask.js'
+  serializeDailyCareAction,
+  serializeObservation
+} from './serializeDailyCare.js'
 import type { CareBucket } from '../../generated/client.js'
 
 const dailyActionInclude = {
-  orderBy: { createdAt: 'asc' as const },
+  orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
   include: {
     completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-    careAction: { select: { targetReps: true, targetDurationSeconds: true } }
+    careAction: { select: { targetReps: true, targetDurationSeconds: true } },
+    substitutedFor: { select: { id: true, nameSnapshot: true } }
   }
 }
 
@@ -60,7 +57,7 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
     )
 
     const existing = await prisma.dailyCareAction.findMany({
-      where: { dailyCareLogId: dailyLog.id },
+      where: { dailyCareLogId: dailyLog.id, careActionId: { not: null } },
       select: { careActionId: true }
     })
     const existingIds = new Set(existing.map(e => e.careActionId))
@@ -73,9 +70,14 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
             data: {
               dailyCareLogId: dailyLog!.id,
               careActionId: a.id,
+              bucket: a.bucket,
+              source: 'PLAN',
               nameSnapshot: a.name,
+              descriptionSnapshot: a.description,
+              instructionsSnapshot: a.instructions,
               targetReps: a.targetReps,
               targetDurationSeconds: a.targetDurationSeconds,
+              sortOrder: a.sortOrder,
               status: 'PENDING'
             }
           })
@@ -83,8 +85,6 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
       )
     }
   }
-
-  await syncDailyTasks(dailyLog.id)
 
   return loadTodayPayload(dogId, dailyLog.id)
 }
@@ -101,10 +101,6 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
     where: { id: dailyCareLogId },
     include: {
       dailyCareActions: dailyActionInclude,
-      dailyTasks: {
-        orderBy: [{ bucket: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
-        include: dailyTaskInclude
-      },
       voiceNotes: {
         orderBy: { createdAt: 'desc' },
         include: {
@@ -122,14 +118,11 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
 
   const dog = await serializeDog(await prisma.dog.findUniqueOrThrow({ where: { id: dogId } }))
   const dailyCareActions = await Promise.all(log.dailyCareActions.map(serializeDailyCareAction))
-  const tasks = await Promise.all(
-    log.dailyTasks.map(t => serializeDailyTask(t as DailyTaskWithRelations))
-  )
   const observations = log.healthObservations.map(serializeObservation)
 
-  const activityTasks = tasks.filter(t => t.bucket === 'ACTIVITY')
-  const mobilityTasks = tasks.filter(t => t.bucket === 'MOBILITY')
-  const recoveryTasks = tasks.filter(t => t.bucket === 'RECOVERY')
+  const activityActions = dailyCareActions.filter(a => a.bucket === 'ACTIVITY')
+  const mobilityActions = dailyCareActions.filter(a => a.bucket === 'MOBILITY')
+  const recoveryActions = dailyCareActions.filter(a => a.bucket === 'RECOVERY')
 
   const bucketScores = parseBucketScores(log.bucketScores)
   const latestVoiceNote = log.voiceNotes[0] ?? null
@@ -158,19 +151,19 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
     },
     buckets: {
       activity: {
-        tasks: activityTasks,
+        tasks: activityActions,
         observations: groupByBucket(observations, 'ACTIVITY'),
-        progress: bucketProgress(activityTasks),
+        progress: bucketProgress(activityActions),
         score: bucketScores?.activity ?? null
       },
       mobility: {
-        tasks: mobilityTasks,
+        tasks: mobilityActions,
         observations: groupByBucket(observations, 'MOBILITY'),
-        progress: bucketProgress(mobilityTasks),
+        progress: bucketProgress(mobilityActions),
         score: bucketScores?.mobility ?? null
       },
       recovery: {
-        tasks: recoveryTasks,
+        tasks: recoveryActions,
         observations: groupByBucket(observations, 'RECOVERY'),
         score: bucketScores?.recovery ?? null
       }

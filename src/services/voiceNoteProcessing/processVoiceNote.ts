@@ -15,8 +15,7 @@ export async function processVoiceNote(voiceNoteId: string) {
         include: {
           dailyCareActions: {
             include: { careAction: true }
-          },
-          dailyTasks: true
+          }
         }
       }
     }
@@ -26,21 +25,15 @@ export async function processVoiceNote(voiceNoteId: string) {
     throw new Error('Voice note has no transcript')
   }
 
-  const actions: TodayActionContext[] = voiceNote.dailyCareLog.dailyCareActions.map(a => ({
+  const actions: TodayActionContext[] = []
+
+  const tasks: TodayTaskContext[] = voiceNote.dailyCareLog.dailyCareActions.map(a => ({
     id: a.id,
     name: a.nameSnapshot,
-    bucket: a.careAction.bucket,
+    bucket: a.bucket,
     status: a.status,
-    instructions: a.careAction.instructions
-  }))
-
-  const tasks: TodayTaskContext[] = voiceNote.dailyCareLog.dailyTasks.map(t => ({
-    id: t.id,
-    name: t.nameSnapshot,
-    bucket: t.bucket,
-    status: t.status,
-    source: t.source,
-    instructions: t.instructionsSnapshot
+    source: a.source,
+    instructions: a.instructionsSnapshot ?? a.careAction?.instructions ?? null
   }))
 
   const userName =

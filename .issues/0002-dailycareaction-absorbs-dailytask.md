@@ -60,7 +60,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by inner loop at preflight>`
+`0b712ed171a022ccd9b693452d29111e6c58fa42`  (master; post-0001 merge, native gates green, grep red = the job)
 
 ## Notes for agent
 Watch for `needsReview` — it MUST survive on `DailyCareAction`; only the `VoiceNote`
