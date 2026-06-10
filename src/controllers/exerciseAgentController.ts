@@ -2,10 +2,10 @@ import type { FastifyReply } from 'fastify'
 import { assertDogMemberAccess } from '../lib/dogAccess.js'
 import type { AuthenticatedRequest } from '../types/auth.js'
 import {
-  cancelExerciseAgentSession,
-  confirmExerciseAgentSession,
-  createExerciseAgentSession,
-  getExerciseAgentSession,
+  cancelExerciseSession,
+  confirmExerciseSession,
+  createExerciseSession,
+  getExerciseSession,
   sendExerciseAgentMessage,
   serializeSession
 } from '../services/exerciseAgent/sessionService.js'
@@ -28,7 +28,7 @@ export class ExerciseAgentController {
     }
 
     try {
-      const { session, error } = await createExerciseAgentSession({
+      const { session, error } = await createExerciseSession({
         dogId,
         userId: request.user.id,
         message: body.message
@@ -56,7 +56,7 @@ export class ExerciseAgentController {
       return sendForbidden(reply, 'You do not have access to this dog')
     }
 
-    const session = await getExerciseAgentSession({
+    const session = await getExerciseSession({
       dogId,
       userId: request.user.id,
       sessionId
@@ -110,7 +110,7 @@ export class ExerciseAgentController {
     }
 
     try {
-      const { action } = await confirmExerciseAgentSession({
+      const { action } = await confirmExerciseSession({
         dogId,
         userId: request.user.id,
         sessionId,
@@ -139,7 +139,7 @@ export class ExerciseAgentController {
     }
 
     try {
-      await cancelExerciseAgentSession({
+      await cancelExerciseSession({
         dogId,
         userId: request.user.id,
         sessionId

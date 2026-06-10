@@ -1,10 +1,18 @@
-import { prisma } from '../../lib/prisma.js'
-import type { ProgramAuditSessionStatus } from '../../generated/client.js'
+import type { Prisma } from '../../generated/client.js'
 import {
   createCareAction,
   deactivateCareAction,
   updateCareAction
 } from '../carePlans/carePlanService.js'
+import {
+  commitCareAgentSession,
+  createCareAgentSession,
+  deleteCareAgentSession,
+  findCareAgentSession,
+  parseStoredMessages,
+  updateCareAgentSession,
+  type CareAgentSessionStatus
+} from '../careAgentSession/sessionRepository.js'
 import { runAuditGraph } from './graphRunner.js'
 import { loadAuditContext } from './programContext.js'
 import {
@@ -16,17 +24,18 @@ import {
   type StoredMessage
 } from './types.js'
 
-function parseMessages(raw: unknown): StoredMessage[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter(
-    (m): m is StoredMessage =>
-      typeof m === 'object' &&
-      m !== null &&
-      'role' in m &&
-      'content' in m &&
-      (m.role === 'user' || m.role === 'assistant') &&
-      typeof m.content === 'string'
-  )
+/** This agent is the PLAN_AUDIT entry into the unified CareAgentSession. */
+const KIND = 'PLAN_AUDIT' as const
+
+// ── Draft envelope (PLAN_AUDIT) ───────────────────────────────────────────────
+// The unified `draft` column folds the former `report` and `plan` columns into
+// one JSON envelope. Status collapses onto the shared enum: a ready report =
+// AWAITING_INPUT (awaiting the user's direction); a ready plan = DRAFT_READY
+// (a committable draft exists).
+
+type PlanAuditDraft = {
+  report: AuditReport | null
+  plan: ProposedProgramChanges | null
 }
 
 function parseReport(raw: unknown): AuditReport | null {
@@ -41,32 +50,46 @@ function parsePlan(raw: unknown): ProposedProgramChanges | null {
   return result.success ? result.data : null
 }
 
+function decodePlanAuditDraft(raw: unknown): PlanAuditDraft {
+  if (!raw || typeof raw !== 'object') return { report: null, plan: null }
+  const d = raw as Record<string, unknown>
+  return { report: parseReport(d.report), plan: parsePlan(d.plan) }
+}
+
+function encodePlanAuditDraft(
+  report: AuditReport | null,
+  plan: ProposedProgramChanges | null
+): Prisma.InputJsonValue | undefined {
+  if (!report && !plan) return undefined
+  return { report: report ?? null, plan: plan ?? null } as Prisma.InputJsonValue
+}
+
 function mapToStatus(
   report: AuditReport | null,
   plan: ProposedProgramChanges | null
-): ProgramAuditSessionStatus {
-  if (plan) return 'PLAN_READY'
-  if (report) return 'REPORT_READY'
+): CareAgentSessionStatus {
+  if (plan) return 'DRAFT_READY'
+  if (report) return 'AWAITING_INPUT'
   return 'ACTIVE'
 }
 
 export function serializeSession(session: {
   id: string
   dogId: string
-  status: ProgramAuditSessionStatus
+  status: CareAgentSessionStatus
   messages: unknown
-  report: unknown
-  plan: unknown
+  draft: unknown
   createdAt: Date
   updatedAt: Date
 }) {
+  const { report, plan } = decodePlanAuditDraft(session.draft)
   return {
     id: session.id,
     dogId: session.dogId,
     status: session.status,
-    messages: parseMessages(session.messages),
-    report: parseReport(session.report),
-    plan: parsePlan(session.plan),
+    messages: parseStoredMessages(session.messages),
+    report,
+    plan,
     createdAt: session.createdAt.toISOString(),
     updatedAt: session.updatedAt.toISOString()
   }
@@ -74,7 +97,7 @@ export function serializeSession(session: {
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-export async function createProgramAuditSession(args: { dogId: string; userId: string }) {
+export async function createAuditSession(args: { dogId: string; userId: string }) {
   const dogContext = await loadAuditContext(args.dogId)
   if (!dogContext) throw new Error('Dog not found')
 
@@ -83,27 +106,24 @@ export async function createProgramAuditSession(args: { dogId: string; userId: s
     graphResult = await runAuditGraph({ dogContext })
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Agent failed'
-    const session = await prisma.programAuditSession.create({
-      data: {
-        dogId: args.dogId,
-        userId: args.userId,
-        status: 'FAILED',
-        messages: []
-      }
+    const session = await createCareAgentSession({
+      dogId: args.dogId,
+      userId: args.userId,
+      kind: KIND,
+      status: 'FAILED',
+      messages: []
     })
     return { session, error }
   }
 
   const status = mapToStatus(graphResult.report, graphResult.plan)
-  const session = await prisma.programAuditSession.create({
-    data: {
-      dogId: args.dogId,
-      userId: args.userId,
-      status,
-      messages: graphResult.messages,
-      report: graphResult.report ?? undefined,
-      plan: graphResult.plan ?? undefined
-    }
+  const session = await createCareAgentSession({
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status,
+    messages: graphResult.messages,
+    draft: encodePlanAuditDraft(graphResult.report, graphResult.plan)
   })
 
   return { session, error: null }
@@ -115,79 +135,78 @@ export async function sendProgramAuditMessage(args: {
   sessionId: string
   message: string
 }) {
-  const session = await prisma.programAuditSession.findFirst({
-    where: {
-      id: args.sessionId,
-      dogId: args.dogId,
-      userId: args.userId,
-      status: { in: ['ACTIVE', 'AWAITING_INPUT', 'REPORT_READY', 'PLAN_READY'] }
-    }
+  const session = await findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status: { in: ['ACTIVE', 'AWAITING_INPUT', 'DRAFT_READY'] }
   })
   if (!session) throw new Error('Session not found')
 
   const dogContext = await loadAuditContext(args.dogId)
   if (!dogContext) throw new Error('Dog not found')
 
-  const priorMessages = parseMessages(session.messages)
+  const prior = decodePlanAuditDraft(session.draft)
+  const priorMessages = parseStoredMessages(session.messages)
   const messages: StoredMessage[] = [
     ...priorMessages,
     { role: 'user', content: args.message.trim() }
   ]
-  const existingReport = parseReport(session.report)
 
   let graphResult
   try {
-    graphResult = await runAuditGraph({ dogContext, messages, existingReport })
+    graphResult = await runAuditGraph({ dogContext, messages, existingReport: prior.report })
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Agent failed'
-    await prisma.programAuditSession.update({
-      where: { id: session.id },
-      data: { status: 'FAILED', messages }
+    const updated = await updateCareAgentSession(session.id, {
+      status: 'FAILED',
+      messages
     })
-    return { session: { ...session, status: 'FAILED' as const, messages }, error }
+    return { session: updated, error }
   }
 
   const status = mapToStatus(graphResult.report, graphResult.plan)
-  const updated = await prisma.programAuditSession.update({
-    where: { id: session.id },
-    data: {
-      status,
-      messages: graphResult.messages,
-      report: graphResult.report ?? session.report ?? undefined,
-      plan: graphResult.plan ?? session.plan ?? undefined
-    }
+  const newReport = graphResult.report ?? prior.report
+  const newPlan = graphResult.plan ?? prior.plan
+  const updated = await updateCareAgentSession(session.id, {
+    status,
+    messages: graphResult.messages,
+    draft: encodePlanAuditDraft(newReport, newPlan)
   })
 
   return { session: updated, error: null }
 }
 
-export async function getProgramAuditSession(args: {
+export async function getAuditSession(args: {
   dogId: string
   userId: string
   sessionId: string
 }) {
-  return prisma.programAuditSession.findFirst({
-    where: { id: args.sessionId, dogId: args.dogId, userId: args.userId }
+  return findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND
   })
 }
 
-export async function confirmProgramAuditSession(args: {
+export async function confirmAuditSession(args: {
   dogId: string
   userId: string
   sessionId: string
   selectedChangeIds?: string[]
 }) {
-  const session = await prisma.programAuditSession.findFirst({
-    where: {
-      id: args.sessionId,
-      dogId: args.dogId,
-      userId: args.userId,
-      status: 'PLAN_READY'
-    }
+  const session = await findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status: 'DRAFT_READY'
   })
   if (!session) throw new Error('Session not found or plan not ready')
 
-  const plan = parsePlan(session.plan)
+  const { plan } = decodePlanAuditDraft(session.draft)
   if (!plan || plan.changes.length === 0) throw new Error('No plan to confirm')
 
   const changesToApply: ProposedChange[] =
@@ -212,27 +231,25 @@ export async function confirmProgramAuditSession(args: {
     }
   }
 
-  await prisma.programAuditSession.update({
-    where: { id: session.id },
-    data: { status: 'COMMITTED' }
+  await commitCareAgentSession(session.id, {
+    committedCarePlanId: applied[0]?.carePlanId ?? null
   })
 
   return { applied, changesApplied: applied.length }
 }
 
-export async function cancelProgramAuditSession(args: {
+export async function cancelAuditSession(args: {
   dogId: string
   userId: string
   sessionId: string
 }) {
-  const session = await prisma.programAuditSession.findFirst({
-    where: {
-      id: args.sessionId,
-      dogId: args.dogId,
-      userId: args.userId,
-      status: { notIn: ['COMMITTED'] }
-    }
+  const session = await findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status: { notIn: ['COMMITTED'] }
   })
   if (!session) throw new Error('Session not found')
-  await prisma.programAuditSession.delete({ where: { id: session.id } })
+  await deleteCareAgentSession(session.id)
 }

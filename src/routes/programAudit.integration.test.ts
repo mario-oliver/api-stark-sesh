@@ -54,7 +54,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
-  /** Creates a REPORT_READY session as the owner. Returns the serialised session. */
+  /** Creates an AWAITING_INPUT (report-ready) session as the owner. Returns the serialised session. */
   async function createSession() {
     testAuth.userId = fixture.ownerId
     const res = await app.inject({
@@ -66,7 +66,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
     return res.json().data as Record<string, unknown>
   }
 
-  /** Creates a PLAN_READY session (one create + one propose-changes message). */
+  /** Creates a DRAFT_READY (plan-ready) session (one create + one propose-changes message). */
   async function createPlanReadySession() {
     const session = await createSession()
     testAuth.userId = fixture.ownerId
@@ -117,7 +117,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
   // ── Test 1 — create session ─────────────────────────────────────────────────
 
-  it('POST /sessions → 201, status REPORT_READY, report schema valid', async () => {
+  it('POST /sessions → 201, status AWAITING_INPUT, report schema valid', async () => {
     testAuth.userId = fixture.ownerId
     const res = await app.inject({
       method: 'POST',
@@ -131,7 +131,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
     const data = body.data
     assert.ok(data.id, 'session must have an id')
-    assert.equal(data.status, 'REPORT_READY')
+    assert.equal(data.status, 'AWAITING_INPUT')
     assert.ok(data.report, 'report must be present')
     assert.equal(typeof data.report.summary, 'string')
     assert.ok(Array.isArray(data.report.strengths))
@@ -145,7 +145,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
   // ── Test 2 — question message ───────────────────────────────────────────────
 
-  it('POST /messages with a question → status stays REPORT_READY, assistant reply appended', async () => {
+  it('POST /messages with a question → status stays AWAITING_INPUT, assistant reply appended', async () => {
     const session = await createSession()
 
     testAuth.userId = fixture.ownerId
@@ -158,7 +158,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
     assert.equal(res.statusCode, 200)
     const data = res.json().data
-    assert.equal(data.status, 'REPORT_READY')
+    assert.equal(data.status, 'AWAITING_INPUT')
     assert.equal(data.plan, null)
 
     const messages = data.messages as Array<{ role: string; content: string }>
@@ -169,7 +169,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
   // ── Test 3 — propose changes message ───────────────────────────────────────
 
-  it('POST /messages "propose changes" → status PLAN_READY, changes have UUIDs', async () => {
+  it('POST /messages "propose changes" → status DRAFT_READY, changes have UUIDs', async () => {
     const session = await createSession()
 
     testAuth.userId = fixture.ownerId
@@ -182,7 +182,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
     assert.equal(res.statusCode, 200)
     const data = res.json().data
-    assert.equal(data.status, 'PLAN_READY')
+    assert.equal(data.status, 'DRAFT_READY')
     assert.ok(data.plan, 'plan must be present')
 
     const changes = data.plan.changes as Array<{ id: string; type: string }>

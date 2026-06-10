@@ -47,14 +47,19 @@ out of scope (enum value only). ADR-0002 move 4.
   CareAction taxonomy, DailyCareAction, VoiceNote fields, observations.
 
 ## Acceptance criteria
-- [ ] (machine) A `CareAgentSession(kind: PLAN_BUILD)` and one `(kind: PLAN_AUDIT)`
+- [x] (machine) A `CareAgentSession(kind: PLAN_BUILD)` and one `(kind: PLAN_AUDIT)`
       each persist, advance status, and record a commit FK.
-- [ ] (machine) `ExerciseAgentSession`, `ProgramAuditSession`,
+      → `src/services/careAgentSession/careAgentSession.persistence.test.ts` (4 tests).
+- [x] (machine) `ExerciseAgentSession`, `ProgramAuditSession`,
       `ExerciseAgentSessionStatus`, `ProgramAuditSessionStatus` absent from `src/`.
-- [ ] (machine) Agent-output contract tests pass (schema shape, not wording).
+      → grep gate exit 0 (0 matches across src incl. regenerated client).
+- [x] (machine) Agent-output contract tests pass (schema shape, not wording).
+      → `types.test.ts`, `confirmDraft.test.ts`, draft-envelope asserts in the
+      persistence test; DB-gated `programAudit.integration.test.ts` for report/plan shape.
 - [ ] (trust-prior-verify) A manual PLAN_BUILD run and a PLAN_AUDIT run on a seeded
       dog still produce a sensible draft/report and commit. (Human eyeballs.)
-- [ ] (machine) typecheck, lint, test, build exit 0.
+      → NOT machine-provable (real OpenAI + DB). Surfaced for human review.
+- [x] (machine) typecheck, lint, test, build exit 0.
 
 ## Feedback Loops
 ```bash
@@ -66,7 +71,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by inner loop at preflight>`
+`f9487ef37355fd2bcb1bfac447f42c4c3257b68c`
 
 ## Notes for agent
 The two agents likely live in separate service modules with their own session

@@ -34,13 +34,13 @@ import {
   updateObservationSchema
 } from '../schemas/dogSchemas.js'
 import {
-  confirmExerciseAgentSessionSchema,
-  createExerciseAgentSessionSchema,
+  confirmExerciseSessionSchema,
+  createExerciseSessionSchema,
   exerciseAgentSessionIdParamSchema,
   sendExerciseAgentMessageSchema
 } from '../schemas/exerciseAgentSchemas.js'
 import {
-  confirmProgramAuditSessionSchema,
+  confirmAuditSessionSchema,
   programAuditSessionIdParamSchema,
   sendProgramAuditMessageSchema
 } from '../schemas/programAuditSchemas.js'
@@ -116,7 +116,7 @@ export default async function dogRoutes(
   fastify.post('/:id/exercise-agent/sessions', {
     preHandler: [
       validateParams(dogIdParamSchema),
-      validate(createExerciseAgentSessionSchema)
+      validate(createExerciseSessionSchema)
     ],
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
     handler: async (request, reply) =>
@@ -142,7 +142,7 @@ export default async function dogRoutes(
   fastify.post('/:id/exercise-agent/sessions/:sessionId/confirm', {
     preHandler: [
       validateParams(exerciseAgentSessionIdParamSchema),
-      validate(confirmExerciseAgentSessionSchema)
+      validate(confirmExerciseSessionSchema)
     ],
     handler: async (request, reply) =>
       exerciseAgent.confirmSession(request as AuthenticatedRequest, reply)
@@ -182,7 +182,7 @@ export default async function dogRoutes(
   fastify.post('/:id/program-audit/sessions/:sessionId/confirm', {
     preHandler: [
       validateParams(programAuditSessionIdParamSchema),
-      validate(confirmProgramAuditSessionSchema)
+      validate(confirmAuditSessionSchema)
     ],
     handler: async (request, reply) =>
       programAudit.confirmSession(request as AuthenticatedRequest, reply)

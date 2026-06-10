@@ -6,7 +6,7 @@ export const exerciseAgentSessionIdParamSchema = z.object({
   sessionId: z.string().uuid()
 })
 
-export const createExerciseAgentSessionSchema = z.object({
+export const createExerciseSessionSchema = z.object({
   message: z.string().trim().min(1).max(4000)
 })
 
@@ -14,6 +14,6 @@ export const sendExerciseAgentMessageSchema = z.object({
   message: z.string().trim().min(1).max(4000)
 })
 
-export const confirmExerciseAgentSessionSchema = z.object({
+export const confirmExerciseSessionSchema = z.object({
   edits: proposedExerciseSchema.partial().optional()
 })

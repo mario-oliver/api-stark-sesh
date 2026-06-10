@@ -9,6 +9,6 @@ export const sendProgramAuditMessageSchema = z.object({
   message: z.string().trim().min(1).max(4000)
 })
 
-export const confirmProgramAuditSessionSchema = z.object({
+export const confirmAuditSessionSchema = z.object({
   selectedChangeIds: z.array(z.string().uuid()).optional()
 })
