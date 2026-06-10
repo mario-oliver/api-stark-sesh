@@ -1,10 +1,10 @@
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph'
 import { ChatOpenAI } from '@langchain/openai'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
-import { randomUUID } from 'crypto'
 import {
   auditReportSchema,
-  refineOutputSchema,
+  normalizeStructuredRefineOutput,
+  refineOutputStructuredSchema,
   type AuditDogContext,
   type AuditGraphState,
   type AuditReport,
@@ -38,7 +38,9 @@ async function callRefineOrPropose(
   messages: StoredMessage[],
   report: AuditReport
 ): Promise<{ reply?: string; plan?: ProposedProgramChanges }> {
-  const model = getModel().withStructuredOutput(refineOutputSchema, { name: 'refine_or_propose' })
+  const model = getModel().withStructuredOutput(refineOutputStructuredSchema, {
+    name: 'refine_or_propose'
+  })
 
   const result = await model.invoke([
     new SystemMessage(REFINE_SYSTEM),
@@ -53,16 +55,7 @@ async function callRefineOrPropose(
     )
   ])
 
-  if (result.type === 'plan') {
-    // Ensure each change has a uuid id (LLM may not produce valid uuids)
-    const changes = result.changes.map(c => ({
-      ...c,
-      id: c.id && /^[0-9a-f-]{36}$/i.test(c.id) ? c.id : randomUUID()
-    }))
-    return { plan: { summary: result.summary, changes } }
-  }
-
-  return { reply: result.content }
+  return normalizeStructuredRefineOutput(result)
 }
 
 // ── LangGraph state machine ───────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { randomUUID } from 'crypto'
 import { proposedExerciseSchema } from '../exerciseAgent/types.js'
 
 // ── Audit report ──────────────────────────────────────────────────────────────
@@ -55,20 +56,84 @@ export type ProposedChangeUpdates = z.infer<typeof proposedChangeUpdatesSchema>
 export type ProposedProgramChanges = z.infer<typeof proposedProgramChangesSchema>
 
 // ── Graph discriminated output for refineOrPropose node ───────────────────────
+// OpenAI structured output requires every field be present; use null for absent values.
 
-export const refineOutputSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('reply'),
-    content: z.string().trim().min(1).max(4000)
-  }),
-  z.object({
-    type: z.literal('plan'),
-    summary: z.string().trim().min(1).max(4000),
-    changes: z.array(proposedChangeSchema).min(1).max(20)
+const structuredProposedChangeUpdatesSchema = z.object({
+  name: z.string().trim().max(200).nullable(),
+  description: z.string().trim().max(2000).nullable(),
+  category: z
+    .enum(['STRETCH', 'STRENGTH', 'MOBILITY', 'WALK', 'GENERAL_CARE', 'OBSERVATION_CHECKPOINT'])
+    .nullable(),
+  frequency: z.enum(['DAILY', 'EVERY_OTHER_DAY', 'WEEKLY', 'AS_NEEDED']).nullable(),
+  timeOfDay: z.enum(['MORNING', 'EVENING', 'ANYTIME']).nullable(),
+  instructions: z.string().trim().max(2000).nullable()
+})
+
+const structuredProposedChangeSchema = z.object({
+  id: z.string().nullable(),
+  type: z.enum(['UPDATE', 'DEACTIVATE', 'CREATE']),
+  actionId: z.string().nullable(),
+  actionName: z.string().nullable(),
+  updates: structuredProposedChangeUpdatesSchema.nullable(),
+  newAction: proposedExerciseSchema.nullable(),
+  reason: z.string().trim().min(1).max(2000)
+})
+
+export const refineOutputStructuredSchema = z.object({
+  responseType: z.enum(['reply', 'plan']),
+  replyContent: z.string().trim().max(4000).nullable(),
+  planSummary: z.string().trim().max(4000).nullable(),
+  planChanges: z.array(structuredProposedChangeSchema).max(20).nullable()
+})
+
+export type RefineOutputStructured = z.infer<typeof refineOutputStructuredSchema>
+
+function stripNullRecord<T extends Record<string, unknown>>(raw: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(raw).filter(([, value]) => value !== null)
+  ) as Partial<T>
+}
+
+export function normalizeStructuredRefineOutput(
+  result: RefineOutputStructured
+): { reply?: string; plan?: ProposedProgramChanges } {
+  if (result.responseType === 'reply') {
+    const content = result.replyContent?.trim()
+    if (!content) throw new Error('Model returned reply without content')
+    return { reply: content }
+  }
+
+  const summary = result.planSummary?.trim()
+  const rawChanges = result.planChanges ?? []
+  if (!summary || rawChanges.length === 0) {
+    throw new Error('Model returned plan without summary or changes')
+  }
+
+  const changes = rawChanges.map(change => {
+    const updates = change.updates ? stripNullRecord(change.updates) : undefined
+    const normalized = {
+      id: change.id,
+      type: change.type,
+      actionId: change.actionId,
+      actionName: change.actionName,
+      updates: updates && Object.keys(updates).length > 0 ? updates : undefined,
+      newAction: change.newAction,
+      reason: change.reason
+    }
+    return proposedChangeSchema.parse({
+      ...normalized,
+      id:
+        normalized.id && /^[0-9a-f-]{36}$/i.test(normalized.id)
+          ? normalized.id
+          : randomUUID(),
+      actionId: normalized.actionId ?? undefined,
+      actionName: normalized.actionName ?? undefined,
+      newAction: normalized.newAction ?? undefined
+    })
   })
-])
 
-export type RefineOutput = z.infer<typeof refineOutputSchema>
+  return { plan: { summary, changes } }
+}
 
 // ── Shared message/context types ──────────────────────────────────────────────
 
