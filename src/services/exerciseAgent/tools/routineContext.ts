@@ -13,14 +13,9 @@ export async function loadDogAgentContext(dogId: string): Promise<DogAgentContex
             orderBy: { sortOrder: 'asc' },
             select: {
               name: true,
-              category: true,
+              bucket: true,
               frequency: true,
-              timeOfDay: true,
-              steps: {
-                where: { isActive: true },
-                select: { name: true },
-                orderBy: { sortOrder: 'asc' }
-              }
+              timeOfDay: true
             }
           }
         },
@@ -37,9 +32,7 @@ export async function loadDogAgentContext(dogId: string): Promise<DogAgentContex
       ? '(none)'
       : plan.actions
           .map((a, i) => {
-            const steps =
-              a.steps.length > 0 ? ` — movements: ${a.steps.map(s => s.name).join(', ')}` : ''
-            return `${i + 1}. ${a.name} (${a.category}, ${a.frequency}${a.timeOfDay ? `, ${a.timeOfDay}` : ''})${steps}`
+            return `${i + 1}. ${a.name} (${a.bucket}, ${a.frequency}${a.timeOfDay ? `, ${a.timeOfDay}` : ''})`
           })
           .join('\n')
 

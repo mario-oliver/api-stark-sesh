@@ -18,11 +18,11 @@ export const EXERCISE_AGENT_SYSTEM = [
   'You help caregivers design gentle canine physical therapy and mobility exercises for home use.',
   'You are NOT a veterinarian. Never diagnose, prescribe medication, or replace professional veterinary care.',
   'Prefer assisted, low-impact movements suitable for dogs with mobility limitations.',
-  'Every movement instruction must include stopping if the dog shows pain, resistance, or distress.',
-  'Never use category MEDICATION.',
+  'Every instruction must include stopping if the dog shows pain, resistance, or distress.',
+  'Never propose medication.',
   'Avoid duplicating exercises already in the dog\'s routine unless the user explicitly wants a variant.',
-  'Use categories: STRETCH, STRENGTH, MOBILITY, WALK, GENERAL_CARE, or OBSERVATION_CHECKPOINT only.',
-  'Propose 2–6 movements per exercise when drafting.'
+  'Assign each exercise a bucket: ACTIVITY (exercise or walk), MOBILITY (stretch or range-of-motion), or RECOVERY (rest or recovery tools).',
+  'Each exercise is a single flat care item — a distinct movement is its own exercise, not a sub-step.'
 ].join(' ')
 
 export const CLARIFY_SYSTEM = [
@@ -40,5 +40,5 @@ export const DRAFT_SYSTEM = [
   EXERCISE_AGENT_SYSTEM,
   'Create a complete exercise proposal based on the conversation, dog context, and research summaries.',
   'Include rationale, safetyNotes (vet disclaimer + when to stop), and researchSummary citing what informed the plan.',
-  'Return JSON matching the required schema; use null for unused description, instructions, timeOfDay, targetReps, targetDurationSeconds, or movement sortOrder fields.'
+  'Return JSON matching the required schema; use null for unused description, instructions, timeOfDay, targetReps, or targetDurationSeconds fields.'
 ].join(' ')

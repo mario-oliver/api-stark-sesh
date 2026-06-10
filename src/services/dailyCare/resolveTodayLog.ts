@@ -2,7 +2,6 @@ import { prisma } from '../../lib/prisma.js'
 import { actionAppliesOnDate } from './actionAppliesOnDate.js'
 import { formatCalendarDate, parseCalendarDate } from './dateUtils.js'
 import { serializeDog } from '../../lib/serializeDog.js'
-import { syncDailyCareActionSteps } from './syncDailyCareActionSteps.js'
 import { syncDailyTasks } from './syncDailyTasks.js'
 import { serializeDailyCareAction } from './serializeDailyCare.js'
 import {
@@ -19,23 +18,7 @@ const dailyActionInclude = {
   orderBy: { createdAt: 'asc' as const },
   include: {
     completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-    careAction: { select: { targetReps: true, targetDurationSeconds: true } },
-    steps: {
-      orderBy: { createdAt: 'asc' as const },
-      include: {
-        completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-        careActionStep: {
-          select: {
-            description: true,
-            instructions: true,
-            targetReps: true,
-            targetDurationSeconds: true,
-            mediaKey: true,
-            mediaContentType: true
-          }
-        }
-      }
-    }
+    careAction: { select: { targetReps: true, targetDurationSeconds: true } }
   }
 }
 
@@ -84,14 +67,13 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
 
     const toCreate = applicable.filter(a => !existingIds.has(a.id))
     if (toCreate.length > 0) {
-      const created = await prisma.$transaction(
+      await prisma.$transaction(
         toCreate.map(a =>
           prisma.dailyCareAction.create({
             data: {
               dailyCareLogId: dailyLog!.id,
               careActionId: a.id,
               nameSnapshot: a.name,
-              categorySnapshot: a.category,
               targetReps: a.targetReps,
               targetDurationSeconds: a.targetDurationSeconds,
               status: 'PENDING'
@@ -99,29 +81,9 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
           })
         )
       )
-
-      for (const dailyAction of created) {
-        const templateSteps = await prisma.careActionStep.findMany({
-          where: { careActionId: dailyAction.careActionId, isActive: true },
-          orderBy: { sortOrder: 'asc' }
-        })
-        if (templateSteps.length > 0) {
-          await prisma.dailyCareActionStep.createMany({
-            data: templateSteps.map(step => ({
-              dailyCareActionId: dailyAction.id,
-              careActionStepId: step.id,
-              nameSnapshot: step.name,
-              targetReps: step.targetReps,
-              targetDurationSeconds: step.targetDurationSeconds,
-              status: 'PENDING' as const
-            }))
-          })
-        }
-      }
     }
   }
 
-  await syncDailyCareActionSteps(dailyLog.id)
   await syncDailyTasks(dailyLog.id)
 
   return loadTodayPayload(dogId, dailyLog.id)

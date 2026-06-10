@@ -29,7 +29,7 @@ export async function processVoiceNote(voiceNoteId: string) {
   const actions: TodayActionContext[] = voiceNote.dailyCareLog.dailyCareActions.map(a => ({
     id: a.id,
     name: a.nameSnapshot,
-    category: a.categorySnapshot,
+    bucket: a.careAction.bucket,
     status: a.status,
     instructions: a.careAction.instructions
   }))

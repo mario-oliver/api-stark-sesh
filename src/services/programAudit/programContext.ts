@@ -11,14 +11,7 @@ export async function loadAuditContext(dogId: string): Promise<AuditDogContext |
         include: {
           actions: {
             where: { isActive: true },
-            orderBy: { sortOrder: 'asc' },
-            include: {
-              steps: {
-                where: { isActive: true },
-                orderBy: { sortOrder: 'asc' },
-                select: { name: true, instructions: true }
-              }
-            }
+            orderBy: { sortOrder: 'asc' }
           }
         }
       }
@@ -40,15 +33,11 @@ export async function loadAuditContext(dogId: string): Promise<AuditDogContext |
     actions: actions.map(a => ({
       id: a.id,
       name: a.name,
-      category: a.category,
+      bucket: a.bucket,
       frequency: a.frequency,
       timeOfDay: a.timeOfDay ?? null,
       description: a.description ?? null,
-      instructions: a.instructions ?? null,
-      steps: a.steps.map(s => ({
-        name: s.name,
-        instructions: s.instructions ?? null
-      }))
+      instructions: a.instructions ?? null
     }))
   }
 }

@@ -9,16 +9,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum CareActionCategory {
-  STRETCH
-  STRENGTH
-  MOBILITY
-  WALK
-  MEDICATION
-  GENERAL_CARE
-  OBSERVATION_CHECKPOINT
-}
-
 enum CareActionFrequency {
   DAILY
   EVERY_OTHER_DAY
@@ -152,7 +142,6 @@ model User {
   subscriptions              Subscription[]
   dogMembers                 DogMember[]
   completedDailyActions      DailyCareAction[]      @relation("DailyCareActionCompletedBy")
-  completedDailyActionSteps  DailyCareActionStep[]  @relation("DailyCareActionStepCompletedBy")
   completedDailyTasks        DailyTask[]            @relation("DailyTaskCompletedBy")
   voiceNotes                 VoiceNote[]
   healthObservations         HealthObservation[]
@@ -245,8 +234,7 @@ model CareAction {
   carePlanId             String
   name                   String
   description            String?
-  category               CareActionCategory
-  bucket                   CareBucket?
+  bucket                 CareBucket
   frequency              CareActionFrequency @default(DAILY)
   timeOfDay              CareActionTimeOfDay?
   targetReps             Int?
@@ -258,35 +246,10 @@ model CareAction {
   updatedAt              DateTime            @updatedAt
 
   carePlan          CarePlan          @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
-  steps             CareActionStep[]
   dailyCareActions  DailyCareAction[]
 
   @@index([carePlanId])
   @@index([carePlanId, isActive, sortOrder])
-}
-
-model CareActionStep {
-  id                    String      @id @default(uuid())
-  careActionId          String
-  name                  String
-  bucket                CareBucket?
-  description           String?
-  instructions          String?
-  targetReps            Int?
-  targetDurationSeconds Int?
-  mediaKey              String?
-  mediaContentType      String?
-  sortOrder             Int      @default(0)
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  careAction            CareAction            @relation(fields: [careActionId], references: [id], onDelete: Cascade)
-  dailyCareActionSteps  DailyCareActionStep[]
-  dailyTasks            DailyTask[]
-
-  @@index([careActionId])
-  @@index([careActionId, isActive, sortOrder])
 }
 
 model DailyCareLog {
@@ -316,7 +279,6 @@ model DailyCareAction {
   dailyCareLogId    String
   careActionId      String
   nameSnapshot      String
-  categorySnapshot  CareActionCategory
   status            DailyCareActionStatus @default(PENDING)
   completedAt       DateTime?
   completedByUserId String?
@@ -331,35 +293,10 @@ model DailyCareAction {
   dailyCareLog DailyCareLog          @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
   careAction   CareAction            @relation(fields: [careActionId], references: [id], onDelete: Cascade)
   completedBy  User?                 @relation("DailyCareActionCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
-  steps        DailyCareActionStep[]
 
   @@unique([dailyCareLogId, careActionId])
   @@index([dailyCareLogId])
   @@index([careActionId])
-  @@index([status])
-}
-
-model DailyCareActionStep {
-  id                    String                @id @default(uuid())
-  dailyCareActionId     String
-  careActionStepId      String
-  nameSnapshot          String
-  targetReps            Int?
-  targetDurationSeconds Int?
-  status                DailyCareActionStatus @default(PENDING)
-  completedAt           DateTime?
-  completedByUserId     String?
-  notes                 String?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-
-  dailyCareAction DailyCareAction @relation(fields: [dailyCareActionId], references: [id], onDelete: Cascade)
-  careActionStep  CareActionStep  @relation(fields: [careActionStepId], references: [id], onDelete: Cascade)
-  completedBy     User?           @relation("DailyCareActionStepCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
-
-  @@unique([dailyCareActionId, careActionStepId])
-  @@index([dailyCareActionId])
-  @@index([careActionStepId])
   @@index([status])
 }
 
@@ -454,7 +391,6 @@ model DailyTask {
   actualDurationSeconds Int?
 
   careActionId          String?
-  careActionStepId      String?
   substitutedForTaskId  String?
 
   metadata              Json?
@@ -469,14 +405,12 @@ model DailyTask {
   completedBy    User?        @relation("DailyTaskCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
   substitutedFor DailyTask?   @relation("TaskSubstitution", fields: [substitutedForTaskId], references: [id], onDelete: SetNull)
   substitutions  DailyTask[]  @relation("TaskSubstitution")
-  careActionStep CareActionStep? @relation(fields: [careActionStepId], references: [id], onDelete: SetNull)
 
   @@index([dailyCareLogId])
   @@index([dailyCareLogId, bucket])
   @@index([status])
   @@index([source])
   @@index([careActionId])
-  @@index([careActionStepId])
 }
 
 model ExerciseAgentSession {
