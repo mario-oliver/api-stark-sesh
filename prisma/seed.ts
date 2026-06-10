@@ -1,78 +1,82 @@
 import 'dotenv/config'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient } from '../src/generated/client.js'
-import { generateShareCode } from '../src/lib/shareCode.js'
-import { DEFAULT_MOBILITY_STRENGTH_ACTIONS } from '../src/services/carePlans/defaultMobilityStrengthPlan.js'
+import { PrismaClient, Prisma } from '../src/generated/client.js'
+import { buildSeedData } from '../src/services/seed/buildSeedData.js'
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
 
+function asJson(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  return value == null ? Prisma.JsonNull : (value as Prisma.InputJsonValue)
+}
+
 async function main() {
-  const caregiverEmails = (process.env.SEED_CAREGIVER_EMAILS ?? '')
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(Boolean)
+  const data = buildSeedData()
 
-  let stark = await prisma.dog.findFirst({ where: { name: 'Stark' } })
-
-  if (!stark) {
-    stark = await prisma.dog.create({
-      data: {
-        name: 'Stark',
-        breed: null,
-        age: null,
-        notes: 'Primary care dog for Stark Health MVP.',
-        shareCode: generateShareCode()
-      }
-    })
-    console.log('Created dog:', stark.name, stark.id)
-  } else {
-    console.log('Dog already exists:', stark.name, stark.id)
-  }
-
-  let plan = await prisma.carePlan.findFirst({
-    where: { dogId: stark.id, name: 'Stark PT Plan' }
+  // FK-safe order; every row is upserted by its fixed id so the seed is idempotent.
+  await prisma.user.upsert({
+    where: { id: data.user.id },
+    create: data.user,
+    update: { email: data.user.email, firstName: data.user.firstName, lastName: data.user.lastName }
   })
 
-  if (!plan) {
-    plan = await prisma.carePlan.create({
-      data: {
-        dogId: stark.id,
-        name: 'Stark PT Plan',
-        isActive: true,
-        actions: {
-          create: DEFAULT_MOBILITY_STRENGTH_ACTIONS
-        }
-      }
-    })
-    console.log('Created care plan:', plan.name)
-  } else {
-    const existingCount = await prisma.careAction.count({ where: { carePlanId: plan.id } })
-    if (existingCount === 0) {
-      await prisma.careAction.createMany({
-        data: DEFAULT_MOBILITY_STRENGTH_ACTIONS.map(a => ({ ...a, carePlanId: plan!.id }))
-      })
-      console.log('Added care actions to existing plan')
-    }
+  {
+    const { id, ...rest } = data.dog
+    await prisma.dog.upsert({ where: { id }, create: data.dog, update: rest })
   }
 
-  for (const email of caregiverEmails) {
-    const user = await prisma.user.findUnique({ where: { email } })
-    if (!user) {
-      console.log(`Skipping DogMember — user not found yet: ${email}`)
-      continue
-    }
-    await prisma.dogMember.upsert({
-      where: { dogId_userId: { dogId: stark.id, userId: user.id } },
-      create: { dogId: stark.id, userId: user.id, role: 'caregiver' },
-      update: {}
-    })
-    console.log('Attached caregiver:', email)
+  {
+    const { id, ...rest } = data.dogMember
+    await prisma.dogMember.upsert({ where: { id }, create: data.dogMember, update: rest })
   }
 
-  console.log('\nSeed complete.')
-  console.log('Stark dog id:', stark.id)
-  console.log('Set SEED_CAREGIVER_EMAILS=comma-separated emails to attach users after they sign up.')
+  {
+    const { id, ...rest } = data.carePlan
+    await prisma.carePlan.upsert({ where: { id }, create: data.carePlan, update: rest })
+  }
+
+  for (const action of data.careActions) {
+    const { id, isMedication: _isMedication, ...rest } = action
+    await prisma.careAction.upsert({ where: { id }, create: { id, ...rest }, update: rest })
+  }
+
+  {
+    const { id, ...rest } = data.dailyCareLog
+    await prisma.dailyCareLog.upsert({ where: { id }, create: data.dailyCareLog, update: rest })
+  }
+
+  for (const dca of data.dailyCareActions) {
+    const { id, ...rest } = dca
+    await prisma.dailyCareAction.upsert({ where: { id }, create: { id, ...rest }, update: rest })
+  }
+
+  {
+    const { id, ...rest } = data.voiceNote
+    await prisma.voiceNote.upsert({ where: { id }, create: data.voiceNote, update: rest })
+  }
+
+  for (const obs of data.healthObservations) {
+    const { id, ...rest } = obs
+    await prisma.healthObservation.upsert({ where: { id }, create: { id, ...rest }, update: rest })
+  }
+
+  for (const session of data.careAgentSessions) {
+    const { id, messages, questions, draft, ...rest } = session
+    const payload = {
+      ...rest,
+      messages: asJson(messages),
+      questions: asJson(questions),
+      draft: asJson(draft)
+    }
+    await prisma.careAgentSession.upsert({ where: { id }, create: { id, ...payload }, update: payload })
+  }
+
+  console.log('Seed complete (consolidated shape).')
+  console.log(`  dog:              ${data.dog.name} (${data.dog.id})`)
+  console.log(`  careActions:      ${data.careActions.length} across 3 buckets`)
+  console.log(`  dailyCareActions: ${data.dailyCareActions.length} (incl. non-PLAN source)`)
+  console.log(`  observations:     ${data.healthObservations.length}`)
+  console.log(`  agent sessions:   ${data.careAgentSessions.map(s => s.kind).join(', ')}`)
 }
 
 main()
