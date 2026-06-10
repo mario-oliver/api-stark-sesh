@@ -1,4 +1,4 @@
-import { describe, it, mock, before } from 'node:test'
+import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 
 // Mock OpenAI image editing before loading the module
@@ -39,7 +39,6 @@ mock.module('./validateFrame.js', {
 describe('generateSpriteSet engine', () => {
   it('returns a manifest with all requested animations', async () => {
     const { generateSpriteSet } = await import('./index.js')
-    const { DEFAULT_ANIMATION_SPECS } = await import('./types.js')
 
     const result = await generateSpriteSet({
       referenceImage: TINY_PNG,

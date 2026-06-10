@@ -159,7 +159,6 @@ export async function runSpriteGenerationSession(sessionId: string): Promise<voi
   })
 
   let generationOutput: Awaited<ReturnType<typeof generateSpriteSet>> | null = null
-  let framesComplete = 0
 
   await advance('GENERATE_FRAMES', 10, async () => {
     generationOutput = await generateSpriteSet(
@@ -170,7 +169,6 @@ export async function runSpriteGenerationSession(sessionId: string): Promise<voi
       },
       {
         onProgress: async (event) => {
-          framesComplete = event.framesComplete
           await prisma.spriteGenerationSession.update({
             where: { id: sessionId },
             data: { progress: event.progress }

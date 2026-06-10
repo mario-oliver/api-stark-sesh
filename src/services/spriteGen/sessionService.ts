@@ -1,9 +1,6 @@
 import { prisma } from '../../lib/prisma.js'
 import { assertPhotoKeyOwnedByUser } from '../s3/dogPhotos.js'
 import { enqueueSpriteGenerationJob } from './queue.js'
-import { isS3Ready } from '../../config/s3.js'
-import { getPresignedSpriteFrameViewUrl, buildSpriteFrameKey } from './s3/dogSprites.js'
-import type { SpriteAnimation } from './engine/types.js'
 import type { SpriteGenManifest } from './engine/types.js'
 
 export type SerializedSpriteSession = {

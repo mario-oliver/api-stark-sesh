@@ -111,7 +111,7 @@ const GraphAnnotation = Annotation.Root({
   })
 })
 
-async function intakeNode(state: typeof GraphAnnotation.State) {
+async function intakeNode(_state: typeof GraphAnnotation.State) {
   return { phase: 'clarify' as const }
 }
 

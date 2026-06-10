@@ -8,7 +8,7 @@ import { getSpriteFrameSize } from '../../../config/s3.js'
 export async function postProcessFrame(input: Buffer): Promise<Buffer> {
   const targetSize = getSpriteFrameSize()
 
-  let img = sharp(input).ensureAlpha()
+  const img = sharp(input).ensureAlpha()
 
   const trimmed = await img.trim({ threshold: 10 }).toBuffer({ resolveWithObject: true })
 

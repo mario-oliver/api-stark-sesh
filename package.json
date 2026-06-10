@@ -11,7 +11,7 @@
     "start": "npx prisma migrate deploy && node dist/server.js",
     "start:prod": "node dist/server.js",
     "lint": "eslint src --ext .ts",
-    "test": "tsx --test 'src/**/*.test.ts'",
+    "test": "tsx --test --experimental-test-module-mocks 'src/**/*.test.ts'",
     "db:generate": "npx prisma generate",
     "db:deploy": "npx prisma migrate deploy",
     "db:push": "npx prisma db push",

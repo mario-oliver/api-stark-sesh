@@ -1,5 +1,4 @@
 import { prisma } from '../../lib/prisma.js'
-import { categoryToBucket } from './categoryToBucket.js'
 import { assertCareStepMediaKeyOwnedByUser } from '../s3/careStepMedia.js'
 import { serializeCareActionStep } from './serializeCareActionStep.js'
 import type { CareBucket } from '../../generated/client.js'

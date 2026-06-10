@@ -1,4 +1,3 @@
-import { prisma } from '../../lib/prisma.js'
 import { getPresignedCareStepMediaViewUrl } from '../s3/careStepMedia.js'
 import { userSelect } from './serializeDailyCare.js'
 
