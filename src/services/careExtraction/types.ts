@@ -6,8 +6,7 @@ export const dailyActionUpdateSchema = z.object({
   confidence: z.enum(['high', 'medium', 'low']).optional(),
   completed: z.boolean(),
   notes: z.string().optional(),
-  tolerance: z.enum(['good', 'okay', 'poor', 'painful', 'unknown']).optional(),
-  issueObserved: z.boolean().optional()
+  tolerance: z.enum(['good', 'okay', 'poor', 'painful', 'unknown']).optional()
 })
 
 export const matchedTaskUpdateSchema = z.object({

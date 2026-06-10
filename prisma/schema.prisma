@@ -102,19 +102,11 @@ enum CareBucket {
   RECOVERY
 }
 
-enum DailyTaskSource {
+enum DailyCareActionSource {
   PLAN
   AD_HOC
   LLM_EXTRACTED
   PLAN_VARIATION
-}
-
-enum DailyTaskStatus {
-  PENDING
-  COMPLETED
-  SKIPPED
-  PARTIALLY_COMPLETED
-  UNCLEAR
 }
 
 enum SubscriptionStatus {
@@ -142,7 +134,6 @@ model User {
   subscriptions              Subscription[]
   dogMembers                 DogMember[]
   completedDailyActions      DailyCareAction[]      @relation("DailyCareActionCompletedBy")
-  completedDailyTasks        DailyTask[]            @relation("DailyTaskCompletedBy")
   voiceNotes                 VoiceNote[]
   healthObservations         HealthObservation[]
 
@@ -265,7 +256,6 @@ model DailyCareLog {
 
   dog                Dog                 @relation(fields: [dogId], references: [id], onDelete: Cascade)
   dailyCareActions   DailyCareAction[]
-  dailyTasks         DailyTask[]
   voiceNotes         VoiceNote[]
   healthObservations HealthObservation[]
 
@@ -275,29 +265,49 @@ model DailyCareLog {
 }
 
 model DailyCareAction {
-  id                String                @id @default(uuid())
-  dailyCareLogId    String
-  careActionId      String
-  nameSnapshot      String
-  status            DailyCareActionStatus @default(PENDING)
-  completedAt       DateTime?
-  completedByUserId String?
-  notes                    String?
-  tolerance                Tolerance?
-  issueObserved            Boolean               @default(false)
-  targetReps               Int?
-  targetDurationSeconds    Int?
-  createdAt                DateTime              @default(now())
-  updatedAt                DateTime              @updatedAt
+  id                    String                @id @default(uuid())
+  dailyCareLogId        String
+  careActionId          String?
+  bucket                CareBucket
+  source                DailyCareActionSource @default(PLAN)
 
-  dailyCareLog DailyCareLog          @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
-  careAction   CareAction            @relation(fields: [careActionId], references: [id], onDelete: Cascade)
-  completedBy  User?                 @relation("DailyCareActionCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  nameSnapshot          String
+  descriptionSnapshot   String?
+  instructionsSnapshot  String?
+
+  status                DailyCareActionStatus @default(PENDING)
+  completedAt           DateTime?
+  completedByUserId     String?
+
+  notes                 String?
+  tolerance             Tolerance?
+  targetReps            Int?
+  actualReps            Int?
+  targetDurationSeconds Int?
+  actualDurationSeconds Int?
+
+  substitutedForTaskId  String?
+
+  metadata              Json?
+  extractionConfidence  Float?
+  needsReview           Boolean               @default(false)
+
+  sortOrder             Int                   @default(0)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  dailyCareLog   DailyCareLog      @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
+  careAction     CareAction?       @relation(fields: [careActionId], references: [id], onDelete: Cascade)
+  completedBy    User?             @relation("DailyCareActionCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  substitutedFor DailyCareAction?  @relation("ActionSubstitution", fields: [substitutedForTaskId], references: [id], onDelete: SetNull)
+  substitutions  DailyCareAction[] @relation("ActionSubstitution")
 
   @@unique([dailyCareLogId, careActionId])
   @@index([dailyCareLogId])
+  @@index([dailyCareLogId, bucket])
   @@index([careActionId])
   @@index([status])
+  @@index([source])
 }
 
 model VoiceNote {
@@ -368,49 +378,6 @@ model HealthObservation {
   @@index([dailyCareLogId])
   @@index([userId])
   @@index([voiceNoteId])
-}
-
-model DailyTask {
-  id                    String          @id @default(uuid())
-  dailyCareLogId        String
-  bucket                CareBucket
-  source                DailyTaskSource @default(PLAN)
-
-  nameSnapshot          String
-  descriptionSnapshot   String?
-  instructionsSnapshot  String?
-
-  status                DailyTaskStatus @default(PENDING)
-  completedAt           DateTime?
-  completedByUserId     String?
-
-  notes                 String?
-  targetReps            Int?
-  actualReps            Int?
-  targetDurationSeconds Int?
-  actualDurationSeconds Int?
-
-  careActionId          String?
-  substitutedForTaskId  String?
-
-  metadata              Json?
-  extractionConfidence  Float?
-  needsReview           Boolean         @default(false)
-
-  sortOrder             Int             @default(0)
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
-
-  dailyCareLog   DailyCareLog @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
-  completedBy    User?        @relation("DailyTaskCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
-  substitutedFor DailyTask?   @relation("TaskSubstitution", fields: [substitutedForTaskId], references: [id], onDelete: SetNull)
-  substitutions  DailyTask[]  @relation("TaskSubstitution")
-
-  @@index([dailyCareLogId])
-  @@index([dailyCareLogId, bucket])
-  @@index([status])
-  @@index([source])
-  @@index([careActionId])
 }
 
 model ExerciseAgentSession {

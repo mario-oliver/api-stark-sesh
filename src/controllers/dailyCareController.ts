@@ -7,10 +7,10 @@ import { loadTodayPayload } from '../services/dailyCare/resolveTodayLog.js'
 import { todayUtcDateString, parseCalendarDate } from '../services/dailyCare/dateUtils.js'
 import { serializeDailyCareAction } from '../services/dailyCare/serializeDailyCare.js'
 import {
-  createAdHocDailyTask,
-  reviewDailyTask,
-  updateDailyTask
-} from '../services/dailyCare/dailyTaskService.js'
+  createAdHocDailyCareAction,
+  reviewDailyCareAction,
+  updateDailyCareActionEntry
+} from '../services/dailyCare/dailyCareActionEntries.js'
 import { observationTypeToBucket } from '../services/carePlans/categoryToBucket.js'
 import { computeBucketScores } from '../services/bucketScoring/computeBucketScores.js'
 import {
@@ -27,7 +27,6 @@ export class DailyCareController {
       status?: DailyCareActionStatus
       notes?: string
       tolerance?: string | null
-      issueObserved?: boolean
     }
 
     const member = await assertDogMemberAccess(dogId, request.user.id)
@@ -55,7 +54,6 @@ export class DailyCareController {
           body.tolerance !== undefined
             ? (body.tolerance as typeof action.tolerance)
             : action.tolerance,
-        issueObserved: body.issueObserved ?? action.issueObserved,
         completedAt: isComplete ? now : status === 'SKIPPED' ? null : action.completedAt,
         completedByUserId: isComplete ? request.user.id : action.completedByUserId
       },
@@ -156,7 +154,7 @@ export class DailyCareController {
     return sendUpdated(reply, updated)
   }
 
-  async updateDailyTaskHandler(request: AuthenticatedRequest, reply: FastifyReply) {
+  async updateActualsHandler(request: AuthenticatedRequest, reply: FastifyReply) {
     const { id: dogId, taskId } = request.params as { id: string; taskId: string }
     const body = request.body as {
       status?: DailyCareActionStatus
@@ -171,15 +169,15 @@ export class DailyCareController {
       return sendForbidden(reply, 'You do not have access to this dog')
     }
 
-    const result = await updateDailyTask(taskId, dogId, request.user.id, body)
+    const result = await updateDailyCareActionEntry(taskId, dogId, request.user.id, body)
     if (!result) {
-      return sendNotFound(reply, 'Daily task not found')
+      return sendNotFound(reply, 'Daily care action not found')
     }
 
-    return sendUpdated(reply, result.task)
+    return sendUpdated(reply, result.action)
   }
 
-  async createDailyTaskHandler(request: AuthenticatedRequest, reply: FastifyReply) {
+  async createAdHocActionHandler(request: AuthenticatedRequest, reply: FastifyReply) {
     const { id: dogId } = request.params as { id: string }
     const body = request.body as {
       dailyCareLogId?: string
@@ -197,15 +195,15 @@ export class DailyCareController {
       return sendForbidden(reply, 'You do not have access to this dog')
     }
 
-    const task = await createAdHocDailyTask(dogId, body)
-    if (!task) {
+    const entry = await createAdHocDailyCareAction(dogId, body)
+    if (!entry) {
       return sendNotFound(reply, 'Daily log not found')
     }
 
-    return sendSuccess(reply, task, 201)
+    return sendSuccess(reply, entry, 201)
   }
 
-  async reviewDailyTaskHandler(request: AuthenticatedRequest, reply: FastifyReply) {
+  async reviewActionHandler(request: AuthenticatedRequest, reply: FastifyReply) {
     const { id: dogId, taskId } = request.params as { id: string; taskId: string }
     const body = request.body as {
       accept: boolean
@@ -217,16 +215,16 @@ export class DailyCareController {
       return sendForbidden(reply, 'You do not have access to this dog')
     }
 
-    const result = await reviewDailyTask(taskId, dogId, request.user.id, body)
+    const result = await reviewDailyCareAction(taskId, dogId, request.user.id, body)
     if (!result) {
-      return sendNotFound(reply, 'Daily task not found')
+      return sendNotFound(reply, 'Daily care action not found')
     }
 
     if ('deleted' in result && result.deleted) {
       return sendSuccess(reply, { deleted: true })
     }
 
-    return sendUpdated(reply, result.task)
+    return sendUpdated(reply, result.action)
   }
 
   async recomputeScores(request: AuthenticatedRequest, reply: FastifyReply) {

@@ -3,7 +3,7 @@ import OpenAI from 'openai'
 import { z } from 'zod'
 import { prisma } from '../../lib/prisma.js'
 import { formatCalendarDate } from '../dailyCare/dateUtils.js'
-import type { BucketScore } from '../dailyCare/serializeDailyTask.js'
+import type { BucketScore } from '../dailyCare/serializeDailyCare.js'
 
 const llmScoreSchema = z.object({
   score: z.number().min(0).max(100),
@@ -161,15 +161,15 @@ export async function computeBucketScores(dailyCareLogId: string) {
     where: { id: dailyCareLogId },
     include: {
       dog: true,
-      dailyTasks: true,
+      dailyCareActions: true,
       healthObservations: true,
       voiceNotes: { where: { processingStatus: 'PROCESSED' }, orderBy: { createdAt: 'desc' } }
     }
   })
 
-  const activityTasks = log.dailyTasks.filter(t => t.bucket === 'ACTIVITY')
-  const mobilityTasks = log.dailyTasks.filter(t => t.bucket === 'MOBILITY')
-  const recoveryTasks = log.dailyTasks.filter(t => t.bucket === 'RECOVERY')
+  const activityTasks = log.dailyCareActions.filter(t => t.bucket === 'ACTIVITY')
+  const mobilityTasks = log.dailyCareActions.filter(t => t.bucket === 'MOBILITY')
+  const recoveryTasks = log.dailyCareActions.filter(t => t.bucket === 'RECOVERY')
 
   const mobilityObs = log.healthObservations.filter(
     o => o.bucket === 'MOBILITY' || o.bucket === null
@@ -219,7 +219,7 @@ export async function computeBucketScores(dailyCareLogId: string) {
   const scoreInputVersion = buildScoreInputVersion(
     log.id,
     log.updatedAt,
-    log.dailyTasks.length,
+    log.dailyCareActions.length,
     log.healthObservations.length
   )
 

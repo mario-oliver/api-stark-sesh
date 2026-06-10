@@ -25,10 +25,10 @@ import {
   updateCareActionSchema,
   updateCarePlanSchema,
   updateDailyActionSchema,
-  updateDailyTaskSchema,
-  createDailyTaskSchema,
-  reviewDailyTaskSchema,
-  dogDailyTaskIdParamSchema,
+  updateActualsSchema,
+  createAdHocActionSchema,
+  reviewActionSchema,
+  dogDailyEntryIdParamSchema,
   dogDailyLogIdParamSchema,
   updateDogSchema,
   updateObservationSchema
@@ -243,21 +243,21 @@ export default async function dogRoutes(
   })
 
   fastify.patch('/:id/daily-tasks/:taskId', {
-    preHandler: [validateParams(dogDailyTaskIdParamSchema), validate(updateDailyTaskSchema)],
+    preHandler: [validateParams(dogDailyEntryIdParamSchema), validate(updateActualsSchema)],
     handler: async (request, reply) =>
-      dailyCare.updateDailyTaskHandler(request as AuthenticatedRequest, reply)
+      dailyCare.updateActualsHandler(request as AuthenticatedRequest, reply)
   })
 
   fastify.post('/:id/daily-tasks', {
-    preHandler: [validateParams(dogIdParamSchema), validate(createDailyTaskSchema)],
+    preHandler: [validateParams(dogIdParamSchema), validate(createAdHocActionSchema)],
     handler: async (request, reply) =>
-      dailyCare.createDailyTaskHandler(request as AuthenticatedRequest, reply)
+      dailyCare.createAdHocActionHandler(request as AuthenticatedRequest, reply)
   })
 
   fastify.patch('/:id/daily-tasks/:taskId/review', {
-    preHandler: [validateParams(dogDailyTaskIdParamSchema), validate(reviewDailyTaskSchema)],
+    preHandler: [validateParams(dogDailyEntryIdParamSchema), validate(reviewActionSchema)],
     handler: async (request, reply) =>
-      dailyCare.reviewDailyTaskHandler(request as AuthenticatedRequest, reply)
+      dailyCare.reviewActionHandler(request as AuthenticatedRequest, reply)
   })
 
   fastify.post('/:id/daily-logs/:logId/recompute-scores', {

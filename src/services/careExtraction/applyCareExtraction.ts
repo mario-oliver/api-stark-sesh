@@ -61,7 +61,7 @@ export async function applyCareExtraction(args: {
 
   await prisma.$transaction(async tx => {
     for (const update of args.extraction.matchedTaskUpdates) {
-      const task = await tx.dailyTask.findFirst({
+      const task = await tx.dailyCareAction.findFirst({
         where: { id: update.dailyTaskId, dailyCareLogId: args.dailyCareLogId }
       })
       if (!task) continue
@@ -73,7 +73,7 @@ export async function applyCareExtraction(args: {
           ? true
           : args.extraction.needsReview
 
-      await tx.dailyTask.update({
+      await tx.dailyCareAction.update({
         where: { id: task.id },
         data: {
           status,
@@ -94,7 +94,7 @@ export async function applyCareExtraction(args: {
           ? true
           : args.extraction.needsReview || adHoc.source === 'plan_variation'
 
-      await tx.dailyTask.create({
+      await tx.dailyCareAction.create({
         data: {
           dailyCareLogId: args.dailyCareLogId,
           bucket: BUCKET_MAP[adHoc.bucket],
@@ -112,11 +112,11 @@ export async function applyCareExtraction(args: {
       })
 
       if (adHoc.substitutedForTaskId && adHoc.status === 'completed') {
-        const substituted = await tx.dailyTask.findFirst({
+        const substituted = await tx.dailyCareAction.findFirst({
           where: { id: adHoc.substitutedForTaskId, dailyCareLogId: args.dailyCareLogId }
         })
         if (substituted && substituted.status === 'PENDING') {
-          await tx.dailyTask.update({
+          await tx.dailyCareAction.update({
             where: { id: substituted.id },
             data: {
               status: 'SKIPPED',
@@ -146,7 +146,6 @@ export async function applyCareExtraction(args: {
           status,
           notes: update.notes ?? action.notes,
           tolerance: tolerance ?? action.tolerance,
-          issueObserved: update.issueObserved ?? action.issueObserved,
           completedAt:
             update.completed && (status === 'COMPLETED' || status === 'PARTIALLY_COMPLETED')
               ? now

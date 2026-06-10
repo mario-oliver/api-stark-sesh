@@ -57,8 +57,7 @@ export const addDogMemberSchema = z.object({
 export const updateDailyActionSchema = z.object({
   status: z.enum(['PENDING', 'COMPLETED', 'SKIPPED', 'PARTIALLY_COMPLETED', 'UNCLEAR']).optional(),
   notes: z.string().optional(),
-  tolerance: z.enum(['GOOD', 'OKAY', 'POOR', 'PAINFUL', 'UNKNOWN']).nullable().optional(),
-  issueObserved: z.boolean().optional()
+  tolerance: z.enum(['GOOD', 'OKAY', 'POOR', 'PAINFUL', 'UNKNOWN']).nullable().optional()
 })
 
 const careBucketSchema = z.enum(['ACTIVITY', 'MOBILITY', 'RECOVERY'])
@@ -154,7 +153,7 @@ export const dogCareActionIdParamSchema = z.object({
   actionId: z.string().uuid()
 })
 
-export const dogDailyTaskIdParamSchema = z.object({
+export const dogDailyEntryIdParamSchema = z.object({
   id: z.string().uuid(),
   taskId: z.string().uuid()
 })
@@ -164,7 +163,7 @@ export const dogDailyLogIdParamSchema = z.object({
   logId: z.string().uuid()
 })
 
-export const updateDailyTaskSchema = z.object({
+export const updateActualsSchema = z.object({
   status: z.enum(['PENDING', 'COMPLETED', 'SKIPPED', 'PARTIALLY_COMPLETED', 'UNCLEAR']).optional(),
   notes: z.string().optional(),
   actualReps: z.coerce.number().int().min(0).max(999).nullable().optional(),
@@ -172,7 +171,7 @@ export const updateDailyTaskSchema = z.object({
   needsReview: z.boolean().optional()
 })
 
-export const createDailyTaskSchema = z.object({
+export const createAdHocActionSchema = z.object({
   dailyCareLogId: z.string().uuid().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   bucket: careBucketSchema,
@@ -183,7 +182,7 @@ export const createDailyTaskSchema = z.object({
   targetDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable()
 })
 
-export const reviewDailyTaskSchema = z.object({
+export const reviewActionSchema = z.object({
   accept: z.boolean(),
   status: z.enum(['PENDING', 'COMPLETED', 'SKIPPED', 'PARTIALLY_COMPLETED', 'UNCLEAR']).optional()
 })
