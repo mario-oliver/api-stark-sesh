@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma.js'
 import type { ExerciseAgentSessionStatus } from '../../generated/client.js'
-import { createCareActionWithSteps } from '../carePlans/carePlanService.js'
+import { createCareAction } from '../carePlans/carePlanService.js'
 import { runExerciseAgentGraph } from './graph.js'
 import { loadDogAgentContext } from './tools/routineContext.js'
 import {
@@ -188,18 +188,9 @@ export async function confirmExerciseAgentSession(args: {
   const merged = { ...(rawDraft as object), ...(args.edits ?? {}) }
   const draft = proposedExerciseSchema.parse(normalizeProposedExerciseInput(merged))
 
-  const { movements, rationale: _r, safetyNotes: _s, researchSummary: _rs, ...actionFields } =
-    draft
+  const { rationale: _r, safetyNotes: _s, researchSummary: _rs, ...actionFields } = draft
 
-  const action = await createCareActionWithSteps(args.dogId, {
-    ...actionFields,
-    steps: movements.map((m, index) => ({
-      name: m.name,
-      description: m.description ?? null,
-      instructions: m.instructions ?? null,
-      sortOrder: m.sortOrder ?? index + 1
-    }))
-  })
+  const action = await createCareAction(args.dogId, actionFields)
 
   await prisma.exerciseAgentSession.update({
     where: { id: session.id },

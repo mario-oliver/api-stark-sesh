@@ -11,25 +11,20 @@ import {
   addDogMemberSchema,
   calendarQuerySchema,
   createCareActionSchema,
-  createCareActionStepSchema,
   createDogSchema,
   joinByShareCodeSchema,
   joinPreviewQuerySchema,
   createObservationSchema,
   dogActionIdParamSchema,
   dogCareActionIdParamSchema,
-  dogCareActionStepIdParamSchema,
-  dogDailyActionStepIdParamSchema,
   dogIdParamSchema,
   dogNoteIdParamSchema,
   dogObsIdParamSchema,
   historyQuerySchema,
   todayQuerySchema,
   updateCareActionSchema,
-  updateCareActionStepSchema,
   updateCarePlanSchema,
   updateDailyActionSchema,
-  updateDailyActionStepSchema,
   updateDailyTaskSchema,
   createDailyTaskSchema,
   reviewDailyTaskSchema,
@@ -49,6 +44,8 @@ import {
   programAuditSessionIdParamSchema,
   sendProgramAuditMessageSchema
 } from '../schemas/programAuditSchemas.js'
+import { createSpriteSessionSchema } from '../schemas/spriteGenSchemas.js'
+import { SpriteGenController } from '../controllers/spriteGenController.js'
 
 export default async function dogRoutes(
   fastify: FastifyInstance,
@@ -60,6 +57,7 @@ export default async function dogRoutes(
   const voiceNotes = new VoiceNotesController()
   const exerciseAgent = new ExerciseAgentController()
   const programAudit = new ProgramAuditController()
+  const spriteGen = new SpriteGenController()
 
   fastify.get('/', {
     handler: async (request, reply) => dogs.listDogs(request as AuthenticatedRequest, reply)
@@ -215,30 +213,6 @@ export default async function dogRoutes(
       carePlans.deactivateAction(request as AuthenticatedRequest, reply)
   })
 
-  fastify.post('/:id/care-plan/actions/:actionId/steps', {
-    preHandler: [
-      validateParams(dogCareActionIdParamSchema),
-      validate(createCareActionStepSchema)
-    ],
-    handler: async (request, reply) =>
-      carePlans.createActionStep(request as AuthenticatedRequest, reply)
-  })
-
-  fastify.patch('/:id/care-plan/actions/:actionId/steps/:stepId', {
-    preHandler: [
-      validateParams(dogCareActionStepIdParamSchema),
-      validate(updateCareActionStepSchema)
-    ],
-    handler: async (request, reply) =>
-      carePlans.updateActionStep(request as AuthenticatedRequest, reply)
-  })
-
-  fastify.patch('/:id/care-plan/actions/:actionId/steps/:stepId/deactivate', {
-    preHandler: validateParams(dogCareActionStepIdParamSchema),
-    handler: async (request, reply) =>
-      carePlans.deactivateActionStep(request as AuthenticatedRequest, reply)
-  })
-
   fastify.get('/:id/calendar', {
     preHandler: [validateParams(dogIdParamSchema), validateQuery(calendarQuerySchema)],
     handler: async (request, reply) => carePlans.getCalendar(request as AuthenticatedRequest, reply)
@@ -266,15 +240,6 @@ export default async function dogRoutes(
     preHandler: [validateParams(dogActionIdParamSchema), validate(updateDailyActionSchema)],
     handler: async (request, reply) =>
       dailyCare.updateDailyAction(request as AuthenticatedRequest, reply)
-  })
-
-  fastify.patch('/:id/daily-action-steps/:stepId', {
-    preHandler: [
-      validateParams(dogDailyActionStepIdParamSchema),
-      validate(updateDailyActionStepSchema)
-    ],
-    handler: async (request, reply) =>
-      dailyCare.updateDailyActionStep(request as AuthenticatedRequest, reply)
   })
 
   fastify.patch('/:id/daily-tasks/:taskId', {
@@ -311,5 +276,39 @@ export default async function dogRoutes(
     preHandler: [validateParams(dogObsIdParamSchema), validate(updateObservationSchema)],
     handler: async (request, reply) =>
       dailyCare.updateObservation(request as AuthenticatedRequest, reply)
+  })
+
+  // ── Sprite Generation ────────────────────────────────────────────────────────
+
+  fastify.post('/:id/sprite-sessions', {
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    preHandler: [validateParams(dogIdParamSchema), validate(createSpriteSessionSchema)],
+    handler: async (request, reply) =>
+      spriteGen.createSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.get('/:id/sprite-sessions/:sessionId', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) =>
+      spriteGen.getSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.delete('/:id/sprite-sessions/:sessionId', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) =>
+      spriteGen.cancelSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.get('/:id/sprite-set', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) =>
+      spriteGen.getSpriteSet(request as AuthenticatedRequest, reply)
+  })
+
+  // Serves individual frames — cached immutably in browser
+  fastify.get('/:id/sprites/:animation/:frame', {
+    preHandler: validateParams(dogIdParamSchema),
+    handler: async (request, reply) =>
+      spriteGen.streamFrame(request as AuthenticatedRequest, reply)
   })
 }

@@ -1,5 +1,3 @@
-import { prisma } from '../../lib/prisma.js'
-import { getPresignedCareStepMediaViewUrl } from '../s3/careStepMedia.js'
 import { userSelect } from './serializeDailyCare.js'
 
 export type DailyTaskWithRelations = {
@@ -19,7 +17,6 @@ export type DailyTaskWithRelations = {
   targetDurationSeconds: number | null
   actualDurationSeconds: number | null
   careActionId: string | null
-  careActionStepId: string | null
   substitutedForTaskId: string | null
   metadata: unknown
   extractionConfidence: number | null
@@ -37,17 +34,9 @@ export type DailyTaskWithRelations = {
     id: string
     nameSnapshot: string
   } | null
-  careActionStep?: {
-    mediaKey: string | null
-    mediaContentType: string | null
-  } | null
 }
 
 export async function serializeDailyTask(task: DailyTaskWithRelations) {
-  const mediaUrl = task.careActionStep?.mediaKey
-    ? await getPresignedCareStepMediaViewUrl(task.careActionStep.mediaKey)
-    : null
-
   return {
     id: task.id,
     dailyCareLogId: task.dailyCareLogId,
@@ -65,16 +54,12 @@ export async function serializeDailyTask(task: DailyTaskWithRelations) {
     targetDurationSeconds: task.targetDurationSeconds,
     actualDurationSeconds: task.actualDurationSeconds,
     careActionId: task.careActionId,
-    careActionStepId: task.careActionStepId,
     substitutedForTaskId: task.substitutedForTaskId,
     substitutedFor: task.substitutedFor,
     metadata: task.metadata,
     extractionConfidence: task.extractionConfidence,
     needsReview: task.needsReview,
     sortOrder: task.sortOrder,
-    mediaKey: task.careActionStep?.mediaKey ?? null,
-    mediaContentType: task.careActionStep?.mediaContentType ?? null,
-    mediaUrl,
     completedBy: task.completedBy,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString()
@@ -83,8 +68,7 @@ export async function serializeDailyTask(task: DailyTaskWithRelations) {
 
 export const dailyTaskInclude = {
   completedBy: { select: userSelect },
-  substitutedFor: { select: { id: true, nameSnapshot: true } },
-  careActionStep: { select: { mediaKey: true, mediaContentType: true } }
+  substitutedFor: { select: { id: true, nameSnapshot: true } }
 } as const
 
 export function bucketProgress(tasks: { status: string }[]) {

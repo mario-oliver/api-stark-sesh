@@ -16,7 +16,7 @@ export function buildCareExtractionPrompt(args: {
       : args.actions
           .map(
             (a, i) =>
-              `${i + 1}. dailyCareActionId=${a.id}, name=${a.name}, category=${a.category}, status=${a.status}`
+              `${i + 1}. dailyCareActionId=${a.id}, name=${a.name}, bucket=${a.bucket}, status=${a.status}`
           )
           .join('\n')
 

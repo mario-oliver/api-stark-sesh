@@ -6,45 +6,35 @@ describe('proposedExerciseSchema', () => {
   const validDraft = {
     name: 'Hip mobility routine',
     description: 'Gentle hip work',
-    category: 'MOBILITY',
+    bucket: 'MOBILITY',
     frequency: 'DAILY',
     timeOfDay: 'MORNING',
     targetReps: null,
     targetDurationSeconds: null,
     instructions: 'Go slowly',
-    movements: [
-      {
-        name: 'Hip flexor stretch',
-        description: null,
-        instructions: 'Stop if pain appears.',
-        sortOrder: null
-      }
-    ],
     rationale: 'Supports hip strength goals.',
     safetyNotes: 'Not veterinary advice. Stop if pain.',
     researchSummary: 'Based on canine rehab guidance.'
   }
 
-  it('accepts a valid draft', () => {
+  it('accepts a valid draft carrying a bucket', () => {
     const parsed = proposedExerciseSchema.parse(validDraft)
     assert.equal(parsed.name, 'Hip mobility routine')
-    assert.equal(parsed.movements.length, 1)
+    assert.equal(parsed.bucket, 'MOBILITY')
   })
 
-  it('rejects MEDICATION category', () => {
-    assert.throws(() =>
-      proposedExerciseSchema.parse({ ...validDraft, category: 'MEDICATION' })
-    )
+  it('rejects a missing bucket', () => {
+    const { bucket: _bucket, ...withoutBucket } = validDraft
+    void _bucket
+    assert.throws(() => proposedExerciseSchema.parse(withoutBucket))
   })
 
-  it('rejects empty movements', () => {
-    assert.throws(() => proposedExerciseSchema.parse({ ...validDraft, movements: [] }))
+  it('rejects an invalid bucket (old category value)', () => {
+    assert.throws(() => proposedExerciseSchema.parse({ ...validDraft, bucket: 'STRETCH' }))
   })
 
-  it('rejects more than 8 movements', () => {
-    const movements = Array.from({ length: 9 }, (_, i) => ({
-      name: `Movement ${i + 1}`
-    }))
-    assert.throws(() => proposedExerciseSchema.parse({ ...validDraft, movements }))
+  it('carries no sub-step movements (flat action)', () => {
+    const parsed = proposedExerciseSchema.parse(validDraft) as Record<string, unknown>
+    assert.equal('movements' in parsed, false)
   })
 })

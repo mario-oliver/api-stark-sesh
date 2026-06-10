@@ -1,22 +1,4 @@
-import type { CareActionCategory, CareBucket, HealthObservationType } from '../../generated/client.js'
-
-export function categoryToBucket(category: CareActionCategory): CareBucket {
-  switch (category) {
-    case 'WALK':
-    case 'STRETCH':
-    case 'STRENGTH':
-      return 'ACTIVITY'
-    case 'MOBILITY':
-      return 'MOBILITY'
-    case 'MEDICATION':
-    case 'GENERAL_CARE':
-      return 'RECOVERY'
-    case 'OBSERVATION_CHECKPOINT':
-      return 'MOBILITY'
-    default:
-      return 'ACTIVITY'
-  }
-}
+import type { CareBucket, HealthObservationType } from '../../generated/client.js'
 
 export function observationTypeToBucket(type: HealthObservationType): CareBucket {
   switch (type) {

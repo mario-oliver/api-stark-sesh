@@ -64,25 +64,13 @@ export async function createDogWithDefaultPlan(userId: string, input: CreateDogI
           create: DEFAULT_MOBILITY_STRENGTH_ACTIONS.map(action => ({
             name: action.name,
             description: action.description ?? null,
-            category: action.category,
+            bucket: action.bucket,
             frequency: action.frequency,
             timeOfDay: action.timeOfDay ?? null,
             targetReps: action.targetReps ?? null,
             targetDurationSeconds: action.targetDurationSeconds ?? null,
             instructions: action.instructions ?? null,
-            sortOrder: action.sortOrder,
-            steps: action.steps
-              ? {
-                  create: action.steps.map(step => ({
-                    name: step.name,
-                    description: step.description ?? null,
-                    instructions: step.instructions ?? null,
-                    targetReps: step.targetReps ?? null,
-                    targetDurationSeconds: step.targetDurationSeconds ?? null,
-                    sortOrder: step.sortOrder
-                  }))
-                }
-              : undefined
+            sortOrder: action.sortOrder
           }))
         }
       }

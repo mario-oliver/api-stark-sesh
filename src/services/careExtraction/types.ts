@@ -72,7 +72,7 @@ export type CareExtractionOutput = z.infer<typeof careExtractionOutputSchema>
 export type TodayActionContext = {
   id: string
   name: string
-  category: string
+  bucket: string
   status: string
   instructions: string | null
 }

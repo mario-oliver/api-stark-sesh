@@ -1,10 +1,7 @@
 import { prisma } from '../../lib/prisma.js'
-import { categoryToBucket } from './categoryToBucket.js'
-import { serializeCareActionStep, type CareActionStepRow } from './serializeCareActionStep.js'
 import { actionAppliesOnDate } from '../dailyCare/actionAppliesOnDate.js'
 import { formatCalendarDate, parseCalendarDate } from '../dailyCare/dateUtils.js'
 import type {
-  CareActionCategory,
   CareActionFrequency,
   CareActionTimeOfDay,
   CareBucket
@@ -13,8 +10,7 @@ import type {
 export type CreateCareActionInput = {
   name: string
   description?: string | null
-  category: CareActionCategory
-  bucket?: CareBucket | null
+  bucket: CareBucket
   frequency: CareActionFrequency
   timeOfDay?: CareActionTimeOfDay | null
   targetReps?: number | null
@@ -25,27 +21,12 @@ export type CreateCareActionInput = {
 
 export type UpdateCareActionInput = Partial<CreateCareActionInput>
 
-export type CreateCareActionStepInput = {
-  name: string
-  bucket?: CareBucket | null
-  description?: string | null
-  instructions?: string | null
-  targetReps?: number | null
-  targetDurationSeconds?: number | null
-  sortOrder?: number
-}
-
-export type CreateCareActionWithStepsInput = CreateCareActionInput & {
-  steps: CreateCareActionStepInput[]
-}
-
 type CareActionRow = {
   id: string
   carePlanId: string
   name: string
   description: string | null
-  category: CareActionCategory
-  bucket?: CareBucket | null
+  bucket: CareBucket
   frequency: CareActionFrequency
   timeOfDay: CareActionTimeOfDay | null
   targetReps: number | null
@@ -55,25 +36,14 @@ type CareActionRow = {
   isActive: boolean
   createdAt: Date
   updatedAt: Date
-  steps?: CareActionStepRow[]
 }
 
-async function serializeCareAction(action: CareActionRow) {
-  const steps = action.steps
-    ? await Promise.all(
-        action.steps
-          .filter(s => s.isActive)
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map(serializeCareActionStep)
-      )
-    : []
-
+function serializeCareAction(action: CareActionRow) {
   return {
     id: action.id,
     carePlanId: action.carePlanId,
     name: action.name,
     description: action.description,
-    category: action.category,
     bucket: action.bucket,
     frequency: action.frequency,
     timeOfDay: action.timeOfDay,
@@ -83,12 +53,11 @@ async function serializeCareAction(action: CareActionRow) {
     sortOrder: action.sortOrder,
     isActive: action.isActive,
     createdAt: action.createdAt.toISOString(),
-    updatedAt: action.updatedAt.toISOString(),
-    steps
+    updatedAt: action.updatedAt.toISOString()
   }
 }
 
-async function serializeCarePlan(plan: {
+function serializeCarePlan(plan: {
   id: string
   dogId: string
   name: string
@@ -97,7 +66,6 @@ async function serializeCarePlan(plan: {
   updatedAt: Date
   actions: CareActionRow[]
 }) {
-  const actions = await Promise.all(plan.actions.map(serializeCareAction))
   return {
     id: plan.id,
     dogId: plan.dogId,
@@ -105,16 +73,13 @@ async function serializeCarePlan(plan: {
     isActive: plan.isActive,
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),
-    actions
+    actions: plan.actions.map(serializeCareAction)
   }
 }
 
 const actionInclude = {
   where: { isActive: true },
-  orderBy: { sortOrder: 'asc' as const },
-  include: {
-    steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' as const } }
-  }
+  orderBy: { sortOrder: 'asc' as const }
 }
 
 export async function getActiveCarePlan(dogId: string) {
@@ -164,78 +129,14 @@ export async function createCareAction(dogId: string, input: CreateCareActionInp
       carePlanId: plan.id,
       name: input.name,
       description: input.description ?? null,
-      category: input.category,
-      bucket: input.bucket ?? categoryToBucket(input.category),
+      bucket: input.bucket,
       frequency: input.frequency,
       timeOfDay: input.timeOfDay ?? null,
       targetReps: input.targetReps ?? null,
       targetDurationSeconds: input.targetDurationSeconds ?? null,
       instructions: input.instructions ?? null,
       sortOrder
-    },
-    include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
-  })
-
-  return serializeCareAction(action)
-}
-
-export async function createCareActionWithSteps(
-  dogId: string,
-  input: CreateCareActionWithStepsInput
-) {
-  const plan = await prisma.carePlan.findFirst({
-    where: { dogId, isActive: true },
-    include: {
-      actions: { where: { isActive: true }, orderBy: { sortOrder: 'desc' }, take: 1 }
     }
-  })
-  if (!plan) {
-    throw new Error('No active care plan found')
-  }
-
-  const maxSort = plan.actions[0]?.sortOrder ?? 0
-  const sortOrder = input.sortOrder ?? maxSort + 1
-  const { steps, ...actionInput } = input
-
-  const action = await prisma.$transaction(async tx => {
-    const created = await tx.careAction.create({
-      data: {
-        carePlanId: plan.id,
-        name: actionInput.name,
-        description: actionInput.description ?? null,
-        category: actionInput.category,
-        bucket: actionInput.bucket ?? categoryToBucket(actionInput.category),
-        frequency: actionInput.frequency,
-        timeOfDay: actionInput.timeOfDay ?? null,
-        targetReps: actionInput.targetReps ?? null,
-        targetDurationSeconds: actionInput.targetDurationSeconds ?? null,
-        instructions: actionInput.instructions ?? null,
-        sortOrder
-      }
-    })
-
-    if (steps.length > 0) {
-      await tx.careActionStep.createMany({
-        data: steps.map((step, index) => ({
-          careActionId: created.id,
-          name: step.name,
-          bucket:
-            step.bucket ??
-            actionInput.bucket ??
-            categoryToBucket(actionInput.category),
-          description: step.description ?? null,
-          instructions: step.instructions ?? null,
-          targetReps: step.targetReps ?? null,
-          targetDurationSeconds: step.targetDurationSeconds ?? null,
-          sortOrder: step.sortOrder ?? index + 1
-        }))
-      })
-    }
-
-    return tx.careAction.findUniqueOrThrow({
-      where: { id: created.id },
-      include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
-    })
   })
 
   return serializeCareAction(action)
@@ -262,7 +163,6 @@ export async function updateCareAction(
     data: {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description }),
-      ...(input.category !== undefined && { category: input.category }),
       ...(input.bucket !== undefined && { bucket: input.bucket }),
       ...(input.frequency !== undefined && { frequency: input.frequency }),
       ...(input.timeOfDay !== undefined && { timeOfDay: input.timeOfDay }),
@@ -272,8 +172,7 @@ export async function updateCareAction(
       }),
       ...(input.instructions !== undefined && { instructions: input.instructions }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder })
-    },
-    include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
+    }
   })
 
   return serializeCareAction(updated)
@@ -293,8 +192,7 @@ export async function deactivateCareAction(dogId: string, actionId: string) {
 
   const updated = await prisma.careAction.update({
     where: { id: actionId },
-    data: { isActive: false },
-    include: { steps: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } }
+    data: { isActive: false }
   })
 
   return serializeCareAction(updated)

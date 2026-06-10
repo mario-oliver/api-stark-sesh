@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma.js'
 import type { ProgramAuditSessionStatus } from '../../generated/client.js'
 import {
-  createCareActionWithSteps,
+  createCareAction,
   deactivateCareAction,
   updateCareAction
 } from '../carePlans/carePlanService.js'
@@ -205,17 +205,9 @@ export async function confirmProgramAuditSession(args: {
       const result = await updateCareAction(args.dogId, change.actionId, change.updates)
       applied.push(result)
     } else if (change.type === 'CREATE' && change.newAction) {
-      const { movements, rationale: _r, safetyNotes: _s, researchSummary: _rs, ...actionFields } =
+      const { rationale: _r, safetyNotes: _s, researchSummary: _rs, ...actionFields } =
         change.newAction
-      const result = await createCareActionWithSteps(args.dogId, {
-        ...actionFields,
-        steps: movements.map((m, index) => ({
-          name: m.name,
-          description: m.description ?? null,
-          instructions: m.instructions ?? null,
-          sortOrder: m.sortOrder ?? index + 1
-        }))
-      })
+      const result = await createCareAction(args.dogId, actionFields)
       applied.push(result)
     }
   }

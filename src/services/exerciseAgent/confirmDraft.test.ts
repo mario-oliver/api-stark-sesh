@@ -12,51 +12,35 @@ function prepareDraftForPersist(
 }
 
 function toCareActionInput(draft: ReturnType<typeof proposedExerciseSchema.parse>) {
-  const { movements, rationale, safetyNotes, researchSummary, ...actionFields } = draft
+  const { rationale, safetyNotes, researchSummary, ...actionFields } = draft
   void rationale
   void safetyNotes
   void researchSummary
-  return {
-    ...actionFields,
-    steps: movements.map((m, index) => ({
-      name: m.name,
-      description: m.description ?? null,
-      instructions: m.instructions ?? null,
-      sortOrder: m.sortOrder ?? index + 1
-    }))
-  }
+  return actionFields
 }
 
 describe('confirm draft preparation', () => {
   const baseDraft = {
     name: 'Evening stretch',
     description: null,
-    category: 'STRETCH',
+    bucket: 'MOBILITY',
     frequency: 'DAILY',
     timeOfDay: 'EVENING',
     targetReps: null,
     targetDurationSeconds: null,
     instructions: null,
-    movements: [
-      {
-        name: 'Neck stretch',
-        description: null,
-        instructions: 'Gentle only.',
-        sortOrder: null
-      }
-    ],
     rationale: 'Helps stiffness.',
     safetyNotes: 'Consult your vet.',
     researchSummary: 'General canine stretch info.'
   }
 
-  it('maps draft to care action with steps', () => {
+  it('maps draft to a flat care action input carrying its bucket', () => {
     const draft = prepareDraftForPersist(baseDraft)
     const input = toCareActionInput(draft)
     assert.equal(input.name, 'Evening stretch')
-    assert.equal(input.steps.length, 1)
-    assert.equal(input.steps[0].name, 'Neck stretch')
-    assert.equal(input.steps[0].sortOrder, 1)
+    assert.equal(input.bucket, 'MOBILITY')
+    assert.equal('steps' in input, false)
+    assert.equal('movements' in input, false)
   })
 
   it('applies edits overlay before validation', () => {

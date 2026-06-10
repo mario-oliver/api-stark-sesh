@@ -70,13 +70,12 @@ async function mockRunAuditGraph(input: {
         newAction: {
           name: 'New Fixture Exercise',
           description: null,
-          category: 'STRETCH' as const,
+          bucket: 'MOBILITY' as const,
           frequency: 'DAILY' as const,
           timeOfDay: null,
           targetReps: null,
           targetDurationSeconds: 30,
           instructions: null,
-          movements: [{ name: 'Gentle fixture stretch', description: null, instructions: null, sortOrder: 1 }],
           rationale: 'Fixture rationale for new exercise',
           safetyNotes: 'Fixture safety notes',
           researchSummary: 'Fixture research summary'

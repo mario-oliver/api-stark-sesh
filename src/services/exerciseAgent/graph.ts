@@ -111,7 +111,7 @@ const GraphAnnotation = Annotation.Root({
   })
 })
 
-async function intakeNode(state: typeof GraphAnnotation.State) {
+async function intakeNode(_state: typeof GraphAnnotation.State) {
   return { phase: 'clarify' as const }
 }
 
@@ -153,7 +153,7 @@ async function researchNode(state: typeof GraphAnnotation.State) {
 
 async function draftNode(state: typeof GraphAnnotation.State) {
   const draft = await callDraft(state.dogContext, state.messages, state.research)
-  const summary = `I've drafted "${draft.name}" with ${draft.movements.length} movement(s). Review the plan below and add it to the routine when ready.`
+  const summary = `I've drafted "${draft.name}". Review the plan below and add it to the routine when ready.`
 
   return {
     phase: 'done' as const,

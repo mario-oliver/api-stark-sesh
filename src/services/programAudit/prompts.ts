@@ -16,14 +16,10 @@ export function buildAuditContextBlock(ctx: AuditDogContext): string {
       ? '(no exercises in routine)'
       : ctx.actions
           .map((a, i) => {
-            const meta = [a.category, a.frequency, a.timeOfDay].filter(Boolean).join(', ')
-            const stepList =
-              a.steps.length === 0
-                ? 'no movements'
-                : a.steps.map(s => s.name).join(', ')
+            const meta = [a.bucket, a.frequency, a.timeOfDay].filter(Boolean).join(', ')
             const desc = a.description ? `\n     Description: ${a.description}` : ''
             const instr = a.instructions ? `\n     Instructions: ${a.instructions}` : ''
-            return `${i + 1}. [id=${a.id}] ${a.name} (${meta})\n     Movements: ${stepList}${desc}${instr}`
+            return `${i + 1}. [id=${a.id}] ${a.name} (${meta})${desc}${instr}`
           })
           .join('\n')
 
@@ -40,7 +36,7 @@ export const AUDIT_BASE_SYSTEM = [
   'Assess the program holistically for: bucket coverage (Activity / Mobility / Recovery), appropriate variety,',
   'redundant exercises, missing recovery work, intensity progression suitability, and safety for a dog',
   'with the given condition and age.',
-  'Never recommend category MEDICATION.',
+  'Never recommend medication.',
   'Keep your tone warm, specific, and actionable — written for a caring non-expert caregiver.'
 ].join(' ')
 

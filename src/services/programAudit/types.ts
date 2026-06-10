@@ -28,9 +28,7 @@ export type AuditObservation = z.infer<typeof auditObservationSchema>
 const proposedChangeUpdatesSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
-  category: z
-    .enum(['STRETCH', 'STRENGTH', 'MOBILITY', 'WALK', 'GENERAL_CARE', 'OBSERVATION_CHECKPOINT'])
-    .optional(),
+  bucket: z.enum(['ACTIVITY', 'MOBILITY', 'RECOVERY']).optional(),
   frequency: z.enum(['DAILY', 'EVERY_OTHER_DAY', 'WEEKLY', 'AS_NEEDED']).optional(),
   timeOfDay: z.enum(['MORNING', 'EVENING', 'ANYTIME']).nullable().optional(),
   instructions: z.string().trim().max(2000).nullable().optional()
@@ -61,9 +59,7 @@ export type ProposedProgramChanges = z.infer<typeof proposedProgramChangesSchema
 const structuredProposedChangeUpdatesSchema = z.object({
   name: z.string().trim().max(200).nullable(),
   description: z.string().trim().max(2000).nullable(),
-  category: z
-    .enum(['STRETCH', 'STRENGTH', 'MOBILITY', 'WALK', 'GENERAL_CARE', 'OBSERVATION_CHECKPOINT'])
-    .nullable(),
+  bucket: z.enum(['ACTIVITY', 'MOBILITY', 'RECOVERY']).nullable(),
   frequency: z.enum(['DAILY', 'EVERY_OTHER_DAY', 'WEEKLY', 'AS_NEEDED']).nullable(),
   timeOfDay: z.enum(['MORNING', 'EVENING', 'ANYTIME']).nullable(),
   instructions: z.string().trim().max(2000).nullable()
@@ -145,12 +141,11 @@ export type StoredMessage = {
 export type AuditActionContext = {
   id: string
   name: string
-  category: string
+  bucket: string
   frequency: string
   timeOfDay: string | null
   description: string | null
   instructions: string | null
-  steps: Array<{ name: string; instructions: string | null }>
 }
 
 export type AuditDogContext = {

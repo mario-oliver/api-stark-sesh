@@ -39,6 +39,18 @@ export function getCareStepMediaPrefix(): string {
   return (process.env.S3_CARE_STEP_MEDIA_PREFIX || 'care-step-media').replace(/^\/+|\/+$/g, '')
 }
 
+export function getDogSpritePrefix(): string {
+  return (process.env.S3_DOG_SPRITE_PREFIX || 'dog-sprites').replace(/^\/+|\/+$/g, '')
+}
+
+export function getSpriteFrameSize(): number {
+  return Number(process.env.SPRITE_FRAME_SIZE) || 1245
+}
+
+export function getSpriteImageModel(): string {
+  return process.env.SPRITE_IMAGE_MODEL || 'gpt-image-1'
+}
+
 export function getS3Config() {
   assertS3Ready()
   return {

@@ -5,10 +5,6 @@ import { assertDogMemberAccess } from '../lib/dogAccess.js'
 import type { AuthenticatedRequest } from '../types/auth.js'
 import { loadTodayPayload } from '../services/dailyCare/resolveTodayLog.js'
 import { todayUtcDateString, parseCalendarDate } from '../services/dailyCare/dateUtils.js'
-import {
-  cascadeExerciseStatus,
-  updateDailyCareActionStepAndRollup
-} from '../services/dailyCare/dailyCareActionUpdates.js'
 import { serializeDailyCareAction } from '../services/dailyCare/serializeDailyCare.js'
 import {
   createAdHocDailyTask,
@@ -40,28 +36,13 @@ export class DailyCareController {
     }
 
     const action = await prisma.dailyCareAction.findFirst({
-      where: { id: actionId, dailyCareLog: { dogId } },
-      include: { steps: true }
+      where: { id: actionId, dailyCareLog: { dogId } }
     })
     if (!action) {
       return sendNotFound(reply, 'Daily care action not found')
     }
 
     const status = body.status ?? action.status
-
-    if (
-      action.steps.length > 0 &&
-      (status === 'COMPLETED' || status === 'SKIPPED' || status === 'PARTIALLY_COMPLETED')
-    ) {
-      const updated = await cascadeExerciseStatus(actionId, status, request.user.id, {
-        notes: body.notes !== undefined ? body.notes : undefined,
-        tolerance: body.tolerance !== undefined ? body.tolerance : undefined,
-        issueObserved: body.issueObserved
-      })
-      const serialized = await serializeDailyCareAction(updated as never)
-      return sendUpdated(reply, serialized)
-    }
-
     const now = new Date()
     const isComplete = status === 'COMPLETED' || status === 'PARTIALLY_COMPLETED'
 
@@ -80,62 +61,12 @@ export class DailyCareController {
       },
       include: {
         completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-        careAction: { select: { targetReps: true, targetDurationSeconds: true } },
-        steps: {
-          orderBy: { createdAt: 'asc' },
-          include: {
-            completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-            careActionStep: {
-              select: {
-                description: true,
-                instructions: true,
-                targetReps: true,
-                targetDurationSeconds: true,
-                mediaKey: true,
-                mediaContentType: true
-              }
-            }
-          }
-        }
+        careAction: { select: { targetReps: true, targetDurationSeconds: true } }
       }
     })
 
     const serialized = await serializeDailyCareAction(updated as never)
     return sendUpdated(reply, serialized)
-  }
-
-  async updateDailyActionStep(request: AuthenticatedRequest, reply: FastifyReply) {
-    const { id: dogId, stepId } = request.params as { id: string; stepId: string }
-    const body = request.body as {
-      status?: DailyCareActionStatus
-      notes?: string
-    }
-
-    const member = await assertDogMemberAccess(dogId, request.user.id)
-    if (!member) {
-      return sendForbidden(reply, 'You do not have access to this dog')
-    }
-
-    const logId = await updateDailyCareActionStepAndRollup(
-      stepId,
-      dogId,
-      request.user.id,
-      body
-    )
-    if (!logId) {
-      return sendNotFound(reply, 'Movement not found')
-    }
-
-    const payload = await loadTodayPayload(dogId, logId)
-    const step = payload.dailyLog.dailyCareActions
-      .flatMap(a => a.steps)
-      .find(s => s.id === stepId)
-
-    if (!step) {
-      return sendNotFound(reply, 'Movement not found')
-    }
-
-    return sendUpdated(reply, step)
   }
 
   async createObservation(request: AuthenticatedRequest, reply: FastifyReply) {

@@ -75,11 +75,10 @@ export async function seedProgramAuditFixture(prisma: TestPrisma): Promise<Progr
     data: {
       carePlanId: plan.id,
       name: 'Test Stretch',
-      category: 'STRETCH',
+      bucket: 'MOBILITY',
       frequency: 'DAILY',
       sortOrder: 1,
-      isActive: true,
-      steps: { create: [{ name: 'Stretch step', sortOrder: 1 }] }
+      isActive: true
     }
   })
 
@@ -87,11 +86,10 @@ export async function seedProgramAuditFixture(prisma: TestPrisma): Promise<Progr
     data: {
       carePlanId: plan.id,
       name: 'Test Strength',
-      category: 'STRENGTH',
+      bucket: 'ACTIVITY',
       frequency: 'DAILY',
       sortOrder: 2,
-      isActive: true,
-      steps: { create: [{ name: 'Strength step', sortOrder: 1 }] }
+      isActive: true
     }
   })
 
@@ -116,9 +114,6 @@ export async function seedProgramAuditFixture(prisma: TestPrisma): Promise<Progr
  *
  * Called in afterEach (wrapped in try/finally) so confirm tests don't
  * pollute subsequent tests even on assertion failure.
- *
- * CareActionStep has onDelete: Cascade, so deleteMany on CareAction
- * automatically removes orphaned steps.
  */
 export async function restoreCareActions(
   prisma: TestPrisma,
@@ -145,14 +140,14 @@ export async function restoreCareActions(
 /**
  * Deletes all test data for this fixture run.
  *
- * Dog deletion cascades: DogMember, CarePlan, CareAction, CareActionStep,
- * and ProgramAuditSession. Users must be deleted separately.
+ * Dog deletion cascades: DogMember, CarePlan, CareAction, and
+ * ProgramAuditSession. Users must be deleted separately.
  */
 export async function teardownFixture(
   prisma: TestPrisma,
   fixture: ProgramAuditFixture
 ): Promise<void> {
-  // Dog cascade handles DogMember, CarePlan, CareAction, CareActionStep, ProgramAuditSession
+  // Dog cascade handles DogMember, CarePlan, CareAction, ProgramAuditSession
   await prisma.dog.deleteMany({ where: { id: fixture.dogId } })
   await prisma.user.deleteMany({ where: { id: { in: [fixture.ownerId, fixture.strangerId] } } })
 }
