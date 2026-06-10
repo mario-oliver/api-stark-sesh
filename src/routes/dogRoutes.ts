@@ -4,6 +4,7 @@ import { DailyCareController } from '../controllers/dailyCareController.js'
 import { CarePlansController } from '../controllers/carePlansController.js'
 import { VoiceNotesController } from '../controllers/voiceNotesController.js'
 import { ExerciseAgentController } from '../controllers/exerciseAgentController.js'
+import { ProgramAuditController } from '../controllers/programAuditController.js'
 import { validate, validateParams, validateQuery } from '../middleware/validation.js'
 import type { AuthenticatedRequest } from '../types/auth.js'
 import {
@@ -43,6 +44,11 @@ import {
   exerciseAgentSessionIdParamSchema,
   sendExerciseAgentMessageSchema
 } from '../schemas/exerciseAgentSchemas.js'
+import {
+  confirmProgramAuditSessionSchema,
+  programAuditSessionIdParamSchema,
+  sendProgramAuditMessageSchema
+} from '../schemas/programAuditSchemas.js'
 import { createSpriteSessionSchema } from '../schemas/spriteGenSchemas.js'
 import { SpriteGenController } from '../controllers/spriteGenController.js'
 
@@ -55,6 +61,7 @@ export default async function dogRoutes(
   const carePlans = new CarePlansController()
   const voiceNotes = new VoiceNotesController()
   const exerciseAgent = new ExerciseAgentController()
+  const programAudit = new ProgramAuditController()
   const spriteGen = new SpriteGenController()
 
   fastify.get('/', {
@@ -150,6 +157,46 @@ export default async function dogRoutes(
     preHandler: validateParams(exerciseAgentSessionIdParamSchema),
     handler: async (request, reply) =>
       exerciseAgent.cancelSession(request as AuthenticatedRequest, reply)
+  })
+
+  // ── Program Audit Agent ────────────────────────────────────────────────────
+
+  fastify.post('/:id/program-audit/sessions', {
+    preHandler: validateParams(dogIdParamSchema),
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    handler: async (request, reply) =>
+      programAudit.createSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.get('/:id/program-audit/sessions/:sessionId', {
+    preHandler: validateParams(programAuditSessionIdParamSchema),
+    handler: async (request, reply) =>
+      programAudit.getSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.post('/:id/program-audit/sessions/:sessionId/messages', {
+    preHandler: [
+      validateParams(programAuditSessionIdParamSchema),
+      validate(sendProgramAuditMessageSchema)
+    ],
+    config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
+    handler: async (request, reply) =>
+      programAudit.sendMessage(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.post('/:id/program-audit/sessions/:sessionId/confirm', {
+    preHandler: [
+      validateParams(programAuditSessionIdParamSchema),
+      validate(confirmProgramAuditSessionSchema)
+    ],
+    handler: async (request, reply) =>
+      programAudit.confirmSession(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.delete('/:id/program-audit/sessions/:sessionId', {
+    preHandler: validateParams(programAuditSessionIdParamSchema),
+    handler: async (request, reply) =>
+      programAudit.cancelSession(request as AuthenticatedRequest, reply)
   })
 
   fastify.post('/:id/care-plan/actions', {

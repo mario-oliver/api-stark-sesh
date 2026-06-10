@@ -97,6 +97,15 @@ enum ExerciseAgentSessionStatus {
   FAILED
 }
 
+enum ProgramAuditSessionStatus {
+  ACTIVE
+  AWAITING_INPUT
+  REPORT_READY
+  PLAN_READY
+  COMMITTED
+  FAILED
+}
+
 enum CareBucket {
   ACTIVITY
   MOBILITY
@@ -194,6 +203,7 @@ model Dog {
   voiceNotes                VoiceNote[]
   healthObservations        HealthObservation[]
   exerciseAgentSessions     ExerciseAgentSession[]
+  programAuditSessions      ProgramAuditSession[]
   spriteSets                SpriteSet[]
   spriteGenerationSessions  SpriteGenerationSession[]
 
@@ -578,4 +588,22 @@ model SpriteGenerationJob {
 
   @@index([status, nextRunAt])
   @@index([sessionId])
+}
+
+model ProgramAuditSession {
+  id        String                    @id @default(uuid())
+  dogId     String
+  userId    String
+  status    ProgramAuditSessionStatus @default(ACTIVE)
+  messages  Json                      @default("[]")
+  report    Json?
+  plan      Json?
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @updatedAt
+
+  dog Dog @relation(fields: [dogId], references: [id], onDelete: Cascade)
+
+  @@index([dogId])
+  @@index([dogId, userId])
+  @@index([status])
 }
