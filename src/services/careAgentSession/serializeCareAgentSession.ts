@@ -48,6 +48,20 @@ function extractDraft(kind: CareAgentSessionKind, raw: unknown): unknown {
     return report === null && plan === null ? null : { report, plan }
   }
 
+  if (kind === 'DAILY_LOG') {
+    // Envelope: { completions, adHocActions, observations, planChangeSuggestions }.
+    // Surface the full review draft; completions/adHocActions stay empty until
+    // 0012/0013, planChangeSuggestions until 0015 (ADR-0003).
+    return {
+      completions: Array.isArray(envelope.completions) ? envelope.completions : [],
+      adHocActions: Array.isArray(envelope.adHocActions) ? envelope.adHocActions : [],
+      observations: Array.isArray(envelope.observations) ? envelope.observations : [],
+      planChangeSuggestions: Array.isArray(envelope.planChangeSuggestions)
+        ? envelope.planChangeSuggestions
+        : []
+    }
+  }
+
   return null
 }
 
