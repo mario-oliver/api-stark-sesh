@@ -16,6 +16,12 @@ import {
   sendProgramAuditMessage
 } from '../services/programAudit/sessionService.js'
 import {
+  cancelDailyLogSession,
+  confirmDailyLogSession,
+  createDailyLogSession,
+  sendDailyLogMessage
+} from '../services/dailyLog/sessionService.js'
+import {
   sendCreated,
   sendError,
   sendForbidden,
@@ -34,7 +40,11 @@ import {
 export class CareAgentController {
   async createSession(request: AuthenticatedRequest, reply: FastifyReply) {
     const { id: dogId } = request.params as { id: string }
-    const body = request.body as { kind: 'PLAN_BUILD' | 'PLAN_AUDIT'; message?: string }
+    const body = request.body as {
+      kind: 'PLAN_BUILD' | 'PLAN_AUDIT' | 'DAILY_LOG'
+      message?: string
+      voiceNoteId?: string
+    }
 
     const member = await assertDogMemberAccess(dogId, request.user.id)
     if (!member) return sendForbidden(reply, 'You do not have access to this dog')
@@ -56,10 +66,22 @@ export class CareAgentController {
         return sendCreated(reply, serializeCareAgentSession(session), 'Care agent session started')
       }
 
+      if (body.kind === 'DAILY_LOG') {
+        const { session, error } = await createDailyLogSession({
+          dogId,
+          userId: request.user.id,
+          voiceNoteId: body.voiceNoteId as string
+        })
+        if (error) return sendError(reply, error, 502)
+        return sendCreated(reply, serializeCareAgentSession(session), 'Care agent session started')
+      }
+
       return sendError(reply, 'Unsupported session kind', 400)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start session'
-      if (message === 'Dog not found') return sendNotFound(reply, message)
+      if (message === 'Dog not found' || message === 'VoiceNote not found') {
+        return sendNotFound(reply, message)
+      }
       return sendError(reply, message, 500)
     }
   }
@@ -87,19 +109,28 @@ export class CareAgentController {
     if (!existing) return sendNotFound(reply, 'Session not found')
 
     try {
+      // DAILY_LOG's single clarifying round (AWAITING_INPUT → DRAFT_READY) resolves
+      // here (issue 0014); PLAN_BUILD/PLAN_AUDIT keep their multi-turn graphs.
       const result =
         existing.kind === 'PLAN_BUILD'
           ? await sendExerciseAgentMessage({ dogId, userId: request.user.id, sessionId, message: body.message })
           : existing.kind === 'PLAN_AUDIT'
             ? await sendProgramAuditMessage({ dogId, userId: request.user.id, sessionId, message: body.message })
-            : null
+            : existing.kind === 'DAILY_LOG'
+              ? await sendDailyLogMessage({ dogId, userId: request.user.id, sessionId, message: body.message })
+              : null
       if (!result) return sendError(reply, 'Unsupported session kind', 400)
       if (result.error) return sendError(reply, result.error, 502)
       return sendSuccess(reply, serializeCareAgentSession(result.session))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to process message'
-      if (message === 'Session not found' || message === 'Dog not found') {
+      if (message === 'Session not found' || message === 'Dog not found' || message === 'VoiceNote not found') {
         return sendNotFound(reply, message)
+      }
+      // The DAILY_LOG clarifying round is one-shot: a reply to a session that is no
+      // longer AWAITING_INPUT is a state conflict, not a server error.
+      if (message === 'Session is not awaiting input') {
+        return sendError(reply, message, 409)
       }
       return sendError(reply, message, 500)
     }
@@ -135,6 +166,22 @@ export class CareAgentController {
         )
       }
 
+      if (existing.kind === 'DAILY_LOG') {
+        const { committed } = await confirmDailyLogSession({
+          dogId,
+          userId: request.user.id,
+          sessionId,
+          selectedChangeIds: body.selectedChangeIds
+        })
+        // `committed` totals the day's logged entries — observations (0011), ad-hoc
+        // actions (0012), and completions (0013) — so the message stays count-accurate.
+        return sendCreated(
+          reply,
+          { committed, status: 'committed' },
+          `Logged ${committed} item${committed === 1 ? '' : 's'}`
+        )
+      }
+
       return sendError(reply, 'Unsupported session kind', 400)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to confirm'
@@ -162,6 +209,8 @@ export class CareAgentController {
         await cancelExerciseSession({ dogId, userId: request.user.id, sessionId })
       } else if (existing.kind === 'PLAN_AUDIT') {
         await cancelAuditSession({ dogId, userId: request.user.id, sessionId })
+      } else if (existing.kind === 'DAILY_LOG') {
+        await cancelDailyLogSession({ dogId, userId: request.user.id, sessionId })
       } else {
         return sendError(reply, 'Unsupported session kind', 400)
       }

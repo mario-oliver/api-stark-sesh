@@ -106,4 +106,55 @@ describe('serializeCareAgentSession — unified wire shape', () => {
     const payload = serializeCareAgentSession(baseRow({ kind: 'PLAN_AUDIT', draft: null }))
     assert.equal(payload.draft, null)
   })
+
+  it('DAILY_LOG: draft is the review envelope; observations + empty buckets surfaced (not null)', () => {
+    const draft = {
+      completions: [],
+      adHocActions: [],
+      observations: [
+        {
+          changeId: 'c1',
+          type: 'LIMPING',
+          severity: 'MILD',
+          bodyArea: 'left front leg',
+          note: 'limping on left front leg',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      planChangeSuggestions: []
+    }
+    const payload = serializeCareAgentSession(
+      baseRow({ kind: 'DAILY_LOG', status: 'DRAFT_READY', draft, voiceNoteId: 'vn-1' })
+    )
+    assert.equal(payload.kind, 'DAILY_LOG')
+    assert.notEqual(payload.draft, null)
+    assert.deepEqual(payload.draft, draft)
+    assert.equal(payload.voiceNoteId, 'vn-1')
+  })
+
+  it('DAILY_LOG: planChangeSuggestions reach the wire payload intact (issue 0015)', () => {
+    const draft = {
+      completions: [],
+      adHocActions: [],
+      observations: [],
+      planChangeSuggestions: [
+        { text: 'add more reps to the morning stretches going forward', likelyAction: 'morning stretches' },
+        { text: 'switch the daily walk to evenings', likelyAction: null }
+      ]
+    }
+    const payload = serializeCareAgentSession(
+      baseRow({ kind: 'DAILY_LOG', status: 'DRAFT_READY', draft, voiceNoteId: 'vn-2' })
+    )
+    assert.equal(payload.kind, 'DAILY_LOG')
+    assert.deepEqual(
+      (payload.draft as { planChangeSuggestions: unknown[] }).planChangeSuggestions,
+      draft.planChangeSuggestions
+    )
+  })
+
+  it('DAILY_LOG: a null draft (e.g. a FAILED session) stays null', () => {
+    const payload = serializeCareAgentSession(baseRow({ kind: 'DAILY_LOG', status: 'FAILED', draft: null }))
+    assert.equal(payload.draft, null)
+  })
 })

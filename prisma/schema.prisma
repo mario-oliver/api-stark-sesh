@@ -265,6 +265,7 @@ model DailyCareAction {
   id                    String                @id @default(uuid())
   dailyCareLogId        String
   careActionId          String?
+  voiceNoteId           String?
   bucket                CareBucket
   source                DailyCareActionSource @default(PLAN)
 
@@ -295,6 +296,7 @@ model DailyCareAction {
 
   dailyCareLog   DailyCareLog      @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
   careAction     CareAction?       @relation(fields: [careActionId], references: [id], onDelete: Cascade)
+  voiceNote      VoiceNote?        @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
   completedBy    User?             @relation("DailyCareActionCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
   substitutedFor DailyCareAction?  @relation("ActionSubstitution", fields: [substitutedForTaskId], references: [id], onDelete: SetNull)
   substitutions  DailyCareAction[] @relation("ActionSubstitution")
@@ -303,6 +305,7 @@ model DailyCareAction {
   @@index([dailyCareLogId])
   @@index([dailyCareLogId, bucket])
   @@index([careActionId])
+  @@index([voiceNoteId])
   @@index([status])
   @@index([source])
 }
@@ -322,6 +325,7 @@ model VoiceNote {
   dailyCareLog       DailyCareLog             @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
   user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   healthObservations HealthObservation[]
+  dailyCareActions   DailyCareAction[]
   processingJobs     VoiceNoteProcessingJob[]
   careAgentSessions  CareAgentSession[]
 
