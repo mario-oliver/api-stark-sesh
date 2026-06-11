@@ -73,6 +73,21 @@ export function findCareAgentSession(args: {
   })
 }
 
+/**
+ * Look up a session by id scoped to its owner, WITHOUT a kind filter — the
+ * unified controller uses this to read the stored `kind` and then dispatch to
+ * the matching agent service.
+ */
+export function findCareAgentSessionForUser(args: {
+  id: string
+  dogId: string
+  userId: string
+}): Promise<CareAgentSession | null> {
+  return prisma.careAgentSession.findFirst({
+    where: { id: args.id, dogId: args.dogId, userId: args.userId }
+  })
+}
+
 export type UpdateCareAgentSessionData = {
   status?: CareAgentSessionStatus
   messages?: Prisma.InputJsonValue

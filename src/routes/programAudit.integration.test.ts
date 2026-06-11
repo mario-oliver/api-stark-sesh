@@ -42,15 +42,15 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
   // ── URL helpers ─────────────────────────────────────────────────────────────
 
-  const sessionsUrl = () => `/v1/dogs/${fixture.dogId}/program-audit/sessions`
+  const sessionsUrl = () => `/v1/dogs/${fixture.dogId}/care-agent/sessions`
   const messagesUrl = (sid: string) =>
-    `/v1/dogs/${fixture.dogId}/program-audit/sessions/${sid}/messages`
+    `/v1/dogs/${fixture.dogId}/care-agent/sessions/${sid}/messages`
   const confirmUrl = (sid: string) =>
-    `/v1/dogs/${fixture.dogId}/program-audit/sessions/${sid}/confirm`
+    `/v1/dogs/${fixture.dogId}/care-agent/sessions/${sid}/confirm`
   const deleteUrl = (sid: string) =>
-    `/v1/dogs/${fixture.dogId}/program-audit/sessions/${sid}`
+    `/v1/dogs/${fixture.dogId}/care-agent/sessions/${sid}`
   const getUrl = (sid: string) =>
-    `/v1/dogs/${fixture.dogId}/program-audit/sessions/${sid}`
+    `/v1/dogs/${fixture.dogId}/care-agent/sessions/${sid}`
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -60,7 +60,8 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
     const res = await app.inject({
       method: 'POST',
       url: sessionsUrl(),
-      headers: { 'content-type': 'application/json' }
+      headers: { 'content-type': 'application/json' },
+      payload: { kind: 'PLAN_AUDIT' }
     })
     assert.equal(res.statusCode, 201, `createSession: expected 201, got ${res.statusCode}`)
     return res.json().data as Record<string, unknown>
@@ -117,12 +118,13 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
   // ── Test 1 — create session ─────────────────────────────────────────────────
 
-  it('POST /sessions → 201, status AWAITING_INPUT, report schema valid', async () => {
+  it('POST /sessions { kind: PLAN_AUDIT } → 201, unified payload, status AWAITING_INPUT, report valid', async () => {
     testAuth.userId = fixture.ownerId
     const res = await app.inject({
       method: 'POST',
       url: sessionsUrl(),
-      headers: { 'content-type': 'application/json' }
+      headers: { 'content-type': 'application/json' },
+      payload: { kind: 'PLAN_AUDIT' }
     })
 
     assert.equal(res.statusCode, 201)
@@ -131,14 +133,18 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
     const data = body.data
     assert.ok(data.id, 'session must have an id')
+    assert.equal(data.kind, 'PLAN_AUDIT', 'unified payload carries the kind discriminator')
     assert.equal(data.status, 'AWAITING_INPUT')
-    assert.ok(data.report, 'report must be present')
-    assert.equal(typeof data.report.summary, 'string')
-    assert.ok(Array.isArray(data.report.strengths))
-    assert.ok(Array.isArray(data.report.gaps))
-    assert.ok(Array.isArray(data.report.observations))
+    assert.ok(Array.isArray(data.messages), 'unified payload carries messages')
+    assert.ok(Array.isArray(data.questions), 'unified payload carries questions')
+    assert.ok(data.draft, 'draft envelope must be present')
+    assert.ok(data.draft.report, 'report must be present under draft')
+    assert.equal(typeof data.draft.report.summary, 'string')
+    assert.ok(Array.isArray(data.draft.report.strengths))
+    assert.ok(Array.isArray(data.draft.report.gaps))
+    assert.ok(Array.isArray(data.draft.report.observations))
     assert.ok(
-      ['GOOD', 'FAIR', 'NEEDS_WORK'].includes(data.report.overallRating as string),
+      ['GOOD', 'FAIR', 'NEEDS_WORK'].includes(data.draft.report.overallRating as string),
       'overallRating must be one of GOOD | FAIR | NEEDS_WORK'
     )
   })
@@ -159,7 +165,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
     assert.equal(res.statusCode, 200)
     const data = res.json().data
     assert.equal(data.status, 'AWAITING_INPUT')
-    assert.equal(data.plan, null)
+    assert.equal(data.draft.plan, null)
 
     const messages = data.messages as Array<{ role: string; content: string }>
     const lastMsg = messages[messages.length - 1]
@@ -183,9 +189,9 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
     assert.equal(res.statusCode, 200)
     const data = res.json().data
     assert.equal(data.status, 'DRAFT_READY')
-    assert.ok(data.plan, 'plan must be present')
+    assert.ok(data.draft.plan, 'plan must be present under draft')
 
-    const changes = data.plan.changes as Array<{ id: string; type: string }>
+    const changes = data.draft.plan.changes as Array<{ id: string; type: string }>
     assert.ok(changes.length >= 1, 'plan must have at least one change')
 
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -198,7 +204,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
   it('POST /confirm { selectedChangeIds: [oneId] } → only that change applied, status committed', async () => {
     const session = await createPlanReadySession()
-    const changes = (session.plan as { changes: Array<{ id: string; type: string }> }).changes
+    const changes = ((session.draft as { plan: { changes: Array<{ id: string; type: string }> } }).plan).changes
 
     // Pick the DEACTIVATE change to apply selectively
     const deactivateChange = changes.find(c => c.type === 'DEACTIVATE')
@@ -235,7 +241,7 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
 
   it('POST /confirm {} → all changes applied, all mutation types verified in DB', async () => {
     const session = await createPlanReadySession()
-    const changes = (session.plan as { changes: Array<{ id: string; type: string }> }).changes
+    const changes = ((session.draft as { plan: { changes: Array<{ id: string; type: string }> } }).plan).changes
 
     testAuth.userId = fixture.ownerId
     const res = await app.inject({
@@ -303,8 +309,9 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
     testAuth.userId = fixture.ownerId
     const res = await app.inject({
       method: 'POST',
-      url: `/v1/dogs/${randomUUID()}/program-audit/sessions`,
-      headers: { 'content-type': 'application/json' }
+      url: `/v1/dogs/${randomUUID()}/care-agent/sessions`,
+      headers: { 'content-type': 'application/json' },
+      payload: { kind: 'PLAN_AUDIT' }
     })
     assert.equal(res.statusCode, 403)
     assert.equal(res.json().success, false)
@@ -317,7 +324,8 @@ describe('Program Audit API – integration', { skip: !process.env.DATABASE_URL_
     const res = await app.inject({
       method: 'POST',
       url: sessionsUrl(),
-      headers: { 'content-type': 'application/json' }
+      headers: { 'content-type': 'application/json' },
+      payload: { kind: 'PLAN_AUDIT' }
     })
     assert.equal(res.statusCode, 403)
     assert.equal(res.json().success, false)
