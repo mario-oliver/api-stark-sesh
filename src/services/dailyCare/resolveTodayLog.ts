@@ -151,19 +151,19 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
     },
     buckets: {
       activity: {
-        tasks: activityActions,
+        actions: activityActions,
         observations: groupByBucket(observations, 'ACTIVITY'),
         progress: bucketProgress(activityActions),
         score: bucketScores?.activity ?? null
       },
       mobility: {
-        tasks: mobilityActions,
+        actions: mobilityActions,
         observations: groupByBucket(observations, 'MOBILITY'),
         progress: bucketProgress(mobilityActions),
         score: bucketScores?.mobility ?? null
       },
       recovery: {
-        tasks: recoveryActions,
+        actions: recoveryActions,
         observations: groupByBucket(observations, 'RECOVERY'),
         score: bucketScores?.recovery ?? null
       }

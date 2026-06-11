@@ -118,7 +118,7 @@ describe('DailyCareAction absorbs the former task table — source + actuals rou
 
     // One unified table: the row appears in its bucket and in the actions list.
     const payload = await loadTodayPayload(dogId, logId)
-    const inActivity = payload.buckets.activity.tasks.find(t => t.id === created.id)
+    const inActivity = payload.buckets.activity.actions.find(t => t.id === created.id)
     assert.ok(inActivity, 'ad-hoc action should surface in the activity bucket')
     assert.equal(inActivity!.source, 'AD_HOC')
     assert.equal(inActivity!.actualReps, 8)
