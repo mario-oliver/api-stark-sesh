@@ -18,7 +18,8 @@ import {
 import {
   cancelDailyLogSession,
   confirmDailyLogSession,
-  createDailyLogSession
+  createDailyLogSession,
+  sendDailyLogMessage
 } from '../services/dailyLog/sessionService.js'
 import {
   sendCreated,
@@ -108,22 +109,28 @@ export class CareAgentController {
     if (!existing) return sendNotFound(reply, 'Session not found')
 
     try {
-      // DAILY_LOG has no conversational turn in v1 (single extraction pass); its
-      // one clarifying round (AWAITING_INPUT) arrives in 0014. Until then a
-      // message to a DAILY_LOG session falls through to the 400 below.
+      // DAILY_LOG's single clarifying round (AWAITING_INPUT → DRAFT_READY) resolves
+      // here (issue 0014); PLAN_BUILD/PLAN_AUDIT keep their multi-turn graphs.
       const result =
         existing.kind === 'PLAN_BUILD'
           ? await sendExerciseAgentMessage({ dogId, userId: request.user.id, sessionId, message: body.message })
           : existing.kind === 'PLAN_AUDIT'
             ? await sendProgramAuditMessage({ dogId, userId: request.user.id, sessionId, message: body.message })
-            : null
+            : existing.kind === 'DAILY_LOG'
+              ? await sendDailyLogMessage({ dogId, userId: request.user.id, sessionId, message: body.message })
+              : null
       if (!result) return sendError(reply, 'Unsupported session kind', 400)
       if (result.error) return sendError(reply, result.error, 502)
       return sendSuccess(reply, serializeCareAgentSession(result.session))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to process message'
-      if (message === 'Session not found' || message === 'Dog not found') {
+      if (message === 'Session not found' || message === 'Dog not found' || message === 'VoiceNote not found') {
         return sendNotFound(reply, message)
+      }
+      // The DAILY_LOG clarifying round is one-shot: a reply to a session that is no
+      // longer AWAITING_INPUT is a state conflict, not a server error.
+      if (message === 'Session is not awaiting input') {
+        return sendError(reply, message, 409)
       }
       return sendError(reply, message, 500)
     }

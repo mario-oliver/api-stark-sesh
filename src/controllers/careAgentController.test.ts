@@ -88,7 +88,11 @@ describe('CareAgentController — create dispatch by kind', () => {
           return { session: fakeSession('DAILY_LOG'), error: null }
         },
         confirmDailyLogSession: async () => ({ observations: [], committed: 0 }),
-        cancelDailyLogSession: async () => {}
+        cancelDailyLogSession: async () => {},
+        // Present so the controller's new DAILY_LOG sendMessage import resolves under
+        // this module mock (issue 0014). The clarifying-round behaviour itself is
+        // proved at the service layer in dailyLog/sessionService.test.ts.
+        sendDailyLogMessage: async () => ({ session: fakeSession('DAILY_LOG'), error: null })
       }
     })
 

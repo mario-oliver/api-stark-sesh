@@ -90,12 +90,25 @@ export const planChangeSuggestionSchema = z.object({
 })
 export type PlanChangeSuggestion = z.infer<typeof planChangeSuggestionSchema>
 
+/**
+ * Blocking clarifying questions (issue 0014, ADR-0003 #5). Non-empty ONLY when the
+ * pass genuinely cannot PLACE an item — a completion ambiguous between multiple of
+ * today's planned actions, or a required field that can't be inferred
+ * (`HealthObservation.type`, an ad-hoc action's `bucket`). The blocked item is then
+ * omitted from its array and described here instead. Soft uncertainty (missing reps,
+ * uncertain severity, a suspected duplicate) is NEVER a question — it rides
+ * `needsReview` inside the draft. The one-round resolution pass is told to leave this
+ * empty; the service ignores it there regardless (one round only).
+ */
+export const clarifyingQuestionSchema = z.string().trim().min(1).max(500)
+
 /** Structured output of the single DAILY_LOG extraction pass. */
 export const dailyLogExtractionSchema = z.object({
   completions: z.array(extractedCompletionSchema),
   observations: z.array(extractedObservationSchema),
   adHocActions: z.array(extractedAdHocActionSchema),
   planChangeSuggestions: z.array(planChangeSuggestionSchema),
+  questions: z.array(clarifyingQuestionSchema),
   message: z.string().trim().max(2000)
 })
 export type DailyLogExtraction = z.infer<typeof dailyLogExtractionSchema>
