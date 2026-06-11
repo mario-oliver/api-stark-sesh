@@ -1096,6 +1096,142 @@ describe('DAILY_LOG blocked-only clarifying questions (issue 0014)', () => {
     assert.equal(draft.completions.length, 1)
     assert.equal(draft.completions[0].needsReview, true, 'remaining uncertainty rides needsReview')
   })
+
+  it('(review #1) an observation placed in round 1 is carried forward if the resolution pass drops it', async () => {
+    const morning = seedPlannedAction({ name: 'morning stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    seedPlannedAction({ name: 'evening stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    // Round 1: a clear limp observation PLUS an ambiguous stretch completion → AWAITING_INPUT.
+    nextExtraction = async () => ({
+      observations: [
+        {
+          type: 'LIMPING',
+          severity: 'MILD',
+          bodyArea: 'left front leg',
+          note: 'limping on left front leg',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      questions: ['Morning or evening stretches?'],
+      message: ''
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+    assert.equal(session.status, 'AWAITING_INPUT')
+    assert.equal((session.draft as { observations: unknown[] }).observations.length, 1)
+
+    // Round 2: the resolver returns the completion but DROPS the limp observation.
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: morning.id as string,
+          nameSnapshot: 'morning stretches',
+          bucket: 'MOBILITY',
+          actualReps: null,
+          actualDurationSeconds: null,
+          tolerance: 'GOOD',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      observations: [],
+      questions: [],
+      message: ''
+    })
+    const res = await service.sendDailyLogMessage({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      message: 'the morning ones'
+    })
+
+    assert.equal(res.session.status, 'DRAFT_READY')
+    const draft = res.session.draft as {
+      completions: Array<{ dailyCareActionId: string }>
+      observations: Array<{ type: string; note: string }>
+    }
+    assert.equal(draft.completions.length, 1, 'resolved completion present')
+    assert.equal(draft.observations.length, 1, 'round-1 observation carried forward, not silently dropped')
+    assert.equal(draft.observations[0].type, 'LIMPING')
+  })
+
+  it('(review #1) a re-emitted observation is not duplicated by the carry-forward', async () => {
+    seedPlannedAction({ name: 'morning stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    nextExtraction = async () => ({
+      observations: [
+        {
+          type: 'LIMPING',
+          severity: 'MILD',
+          bodyArea: 'left front leg',
+          note: 'limping on left front leg',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      questions: ['Morning or evening stretches?'],
+      message: ''
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    // Round 2 re-emits the SAME observation (same type+note) — dedup must keep one.
+    nextExtraction = async () => ({
+      observations: [
+        {
+          type: 'LIMPING',
+          severity: 'MILD',
+          bodyArea: 'left front leg',
+          note: 'limping on left front leg',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      questions: [],
+      message: ''
+    })
+    const res = await service.sendDailyLogMessage({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      message: 'the morning ones'
+    })
+
+    const draft = res.session.draft as { observations: unknown[] }
+    assert.equal(draft.observations.length, 1, 'no duplicate observation from the carry-forward')
+  })
+
+  it('(review #2) a reply to a session no longer AWAITING_INPUT is a state conflict, distinct from not-found', async () => {
+    // A DRAFT_READY session (its one round, if any, already over) is not a reply target.
+    nextExtraction = async () => ({
+      observations: [
+        { type: 'LIMPING', severity: null, bodyArea: null, note: 'a limp', extractionConfidence: 0.9, needsReview: false }
+      ],
+      questions: [],
+      message: ''
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+    assert.equal(session.status, 'DRAFT_READY')
+
+    await assert.rejects(
+      service.sendDailyLogMessage({ dogId: 'dog-1', userId: 'user-1', sessionId: session.id, message: 'hi' }),
+      /Session is not awaiting input/
+    )
+    // a genuinely missing session is a DIFFERENT error (controller maps it to 404, not 409)
+    await assert.rejects(
+      service.sendDailyLogMessage({ dogId: 'dog-1', userId: 'user-1', sessionId: randomUUID(), message: 'hi' }),
+      /Session not found/
+    )
+  })
 })
 
 // ── Migration proof: voiceNoteId on the generated DailyCareAction client ───────

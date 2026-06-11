@@ -127,6 +127,11 @@ export class CareAgentController {
       if (message === 'Session not found' || message === 'Dog not found' || message === 'VoiceNote not found') {
         return sendNotFound(reply, message)
       }
+      // The DAILY_LOG clarifying round is one-shot: a reply to a session that is no
+      // longer AWAITING_INPUT is a state conflict, not a server error.
+      if (message === 'Session is not awaiting input') {
+        return sendError(reply, message, 409)
+      }
       return sendError(reply, message, 500)
     }
   }
