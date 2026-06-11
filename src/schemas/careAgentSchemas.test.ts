@@ -10,9 +10,9 @@ import {
 
 // ── Request-contract gate (DB-free; always runs) ──────────────────────────────
 //
-// Acceptance criterion 0010: the unified create surface accepts PLAN_BUILD /
-// PLAN_AUDIT, requires a message for PLAN_BUILD, and rejects the not-yet-
-// supported DAILY_LOG kind (→ 400 at the route via this validation).
+// Acceptance criteria 0010 + 0011: the unified create surface accepts
+// PLAN_BUILD / PLAN_AUDIT / DAILY_LOG, each requiring its own field —
+// PLAN_BUILD a message, DAILY_LOG a voiceNoteId — and rejects unknown kinds.
 
 describe('createCareAgentSessionSchema — kind dispatch contract', () => {
   it('accepts PLAN_BUILD with a message', () => {
@@ -31,8 +31,19 @@ describe('createCareAgentSessionSchema — kind dispatch contract', () => {
     assert.equal(result.success, true)
   })
 
-  it('rejects DAILY_LOG (not a supported entry point → 400)', () => {
-    const result = createCareAgentSessionSchema.safeParse({ kind: 'DAILY_LOG', message: 'anything' })
+  it('accepts DAILY_LOG with a voiceNoteId (now a supported entry point)', () => {
+    const parsed = createCareAgentSessionSchema.parse({ kind: 'DAILY_LOG', voiceNoteId: randomUUID() })
+    assert.equal(parsed.kind, 'DAILY_LOG')
+    assert.ok(parsed.voiceNoteId)
+  })
+
+  it('rejects DAILY_LOG without a voiceNoteId (→ 400 at the route)', () => {
+    const result = createCareAgentSessionSchema.safeParse({ kind: 'DAILY_LOG' })
+    assert.equal(result.success, false)
+  })
+
+  it('rejects DAILY_LOG with a non-uuid voiceNoteId', () => {
+    const result = createCareAgentSessionSchema.safeParse({ kind: 'DAILY_LOG', voiceNoteId: 'not-a-uuid' })
     assert.equal(result.success, false)
   })
 

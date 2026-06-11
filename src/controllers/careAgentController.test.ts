@@ -11,8 +11,8 @@ import type { AuthenticatedRequest } from '../types/auth.js'
 // 400. The two agent services and the membership check are module-mocked, so no
 // DB or OpenAI is touched — this asserts ROUTING, not agent behaviour.
 
-type Calls = { exerciseCreate: number; auditCreate: number }
-const calls: Calls = { exerciseCreate: 0, auditCreate: 0 }
+type Calls = { exerciseCreate: number; auditCreate: number; dailyLogCreate: number }
+const calls: Calls = { exerciseCreate: 0, auditCreate: 0, dailyLogCreate: 0 }
 
 function fakeSession(kind: string) {
   return {
@@ -81,6 +81,16 @@ describe('CareAgentController — create dispatch by kind', () => {
         cancelAuditSession: async () => {}
       }
     })
+    await mock.module(url('../services/dailyLog/sessionService.ts'), {
+      namedExports: {
+        createDailyLogSession: async () => {
+          calls.dailyLogCreate++
+          return { session: fakeSession('DAILY_LOG'), error: null }
+        },
+        confirmDailyLogSession: async () => ({ observations: [], committed: 0 }),
+        cancelDailyLogSession: async () => {}
+      }
+    })
 
     const mod = await import('./careAgentController.js')
     controller = new mod.CareAgentController()
@@ -110,14 +120,33 @@ describe('CareAgentController — create dispatch by kind', () => {
     assert.equal((reply._state.body as { data: { kind: string } }).data.kind, 'PLAN_AUDIT')
   })
 
-  it('unsupported kind (e.g. DAILY_LOG) → 400, no agent invoked', async () => {
+  it('DAILY_LOG create → daily-log agent, 201, payload kind DAILY_LOG', async () => {
     calls.exerciseCreate = 0
     calls.auditCreate = 0
+    calls.dailyLogCreate = 0
     const reply = fakeReply()
-    await controller.createSession(fakeRequest({ kind: 'DAILY_LOG' }), reply as unknown as FastifyReply)
+    await controller.createSession(
+      fakeRequest({ kind: 'DAILY_LOG', voiceNoteId: 'vn-1' }),
+      reply as unknown as FastifyReply
+    )
+
+    assert.equal(calls.dailyLogCreate, 1, 'DAILY_LOG must route to the daily-log agent')
+    assert.equal(calls.exerciseCreate, 0)
+    assert.equal(calls.auditCreate, 0)
+    assert.equal(reply._state.statusCode, 201)
+    assert.equal((reply._state.body as { data: { kind: string } }).data.kind, 'DAILY_LOG')
+  })
+
+  it('unsupported kind → 400, no agent invoked', async () => {
+    calls.exerciseCreate = 0
+    calls.auditCreate = 0
+    calls.dailyLogCreate = 0
+    const reply = fakeReply()
+    await controller.createSession(fakeRequest({ kind: 'NONSENSE' }), reply as unknown as FastifyReply)
 
     assert.equal(reply._state.statusCode, 400)
     assert.equal(calls.exerciseCreate, 0)
     assert.equal(calls.auditCreate, 0)
+    assert.equal(calls.dailyLogCreate, 0)
   })
 })

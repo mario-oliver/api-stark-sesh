@@ -106,4 +106,35 @@ describe('serializeCareAgentSession — unified wire shape', () => {
     const payload = serializeCareAgentSession(baseRow({ kind: 'PLAN_AUDIT', draft: null }))
     assert.equal(payload.draft, null)
   })
+
+  it('DAILY_LOG: draft is the review envelope; observations + empty buckets surfaced (not null)', () => {
+    const draft = {
+      completions: [],
+      adHocActions: [],
+      observations: [
+        {
+          changeId: 'c1',
+          type: 'LIMPING',
+          severity: 'MILD',
+          bodyArea: 'left front leg',
+          note: 'limping on left front leg',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      planChangeSuggestions: []
+    }
+    const payload = serializeCareAgentSession(
+      baseRow({ kind: 'DAILY_LOG', status: 'DRAFT_READY', draft, voiceNoteId: 'vn-1' })
+    )
+    assert.equal(payload.kind, 'DAILY_LOG')
+    assert.notEqual(payload.draft, null)
+    assert.deepEqual(payload.draft, draft)
+    assert.equal(payload.voiceNoteId, 'vn-1')
+  })
+
+  it('DAILY_LOG: a null draft (e.g. a FAILED session) stays null', () => {
+    const payload = serializeCareAgentSession(baseRow({ kind: 'DAILY_LOG', status: 'FAILED', draft: null }))
+    assert.equal(payload.draft, null)
+  })
 })
