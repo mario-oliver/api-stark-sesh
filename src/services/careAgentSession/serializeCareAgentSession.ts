@@ -50,8 +50,9 @@ function extractDraft(kind: CareAgentSessionKind, raw: unknown): unknown {
 
   if (kind === 'DAILY_LOG') {
     // Envelope: { completions, adHocActions, observations, planChangeSuggestions }.
-    // Surface the full review draft; completions/adHocActions stay empty until
-    // 0012/0013, planChangeSuggestions until 0015 (ADR-0003).
+    // Surface the full review draft; observations (0011) and adHocActions (0012)
+    // are filled, completions stay empty until 0013 and planChangeSuggestions until
+    // 0015 (ADR-0003).
     return {
       completions: Array.isArray(envelope.completions) ? envelope.completions : [],
       adHocActions: Array.isArray(envelope.adHocActions) ? envelope.adHocActions : [],

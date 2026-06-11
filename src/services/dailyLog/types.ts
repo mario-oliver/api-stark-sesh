@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { HealthObservationType, ObservationSeverity } from '../../generated/enums.js'
+import { CareBucket, HealthObservationType, ObservationSeverity } from '../../generated/enums.js'
 
 /**
  * DAILY_LOG draft contract (ADR-0003, frozen by issue 0011).
@@ -18,6 +18,7 @@ import { HealthObservationType, ObservationSeverity } from '../../generated/enum
 
 export const healthObservationTypeSchema = z.nativeEnum(HealthObservationType)
 export const observationSeveritySchema = z.nativeEnum(ObservationSeverity)
+export const careBucketSchema = z.nativeEnum(CareBucket)
 
 /**
  * One observation as the extraction pass emits it (no server-assigned id yet).
@@ -36,6 +37,27 @@ export const extractedObservationSchema = z.object({
 })
 export type ExtractedObservation = z.infer<typeof extractedObservationSchema>
 
+/**
+ * One ad-hoc care action as the extraction pass emits it (no server-assigned id
+ * yet) — an activity the caregiver reports doing that is NOT matched to a planned
+ * action (issue 0012; completion matching of planned actions is 0013). `bucket` is
+ * required (it lands on the non-null `DailyCareAction.bucket`); ADR-0003 out-of-scope
+ * says an un-inferable bucket is defaulted + flagged `needsReview`, not asked (the
+ * `AWAITING_INPUT` round is 0014). `actualReps`/`actualDurationSeconds` are
+ * `.nullable()` (not `.default`/`.optional`) for the same reason as the observation
+ * fields: keep zod's input type identical to its output so `withStructuredOutput`
+ * infers a stable shape and the prompt emits `null` for what it cannot infer.
+ */
+export const extractedAdHocActionSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  bucket: careBucketSchema,
+  actualReps: z.number().int().min(0).nullable(),
+  actualDurationSeconds: z.number().int().min(0).nullable(),
+  extractionConfidence: z.number().min(0).max(1),
+  needsReview: z.boolean()
+})
+export type ExtractedAdHocAction = z.infer<typeof extractedAdHocActionSchema>
+
 /** Inert plan-change hint. Scope (0011): emit the empty array only; populated in 0015. */
 export const planChangeSuggestionSchema = z.object({
   text: z.string().trim().min(1).max(2000),
@@ -46,6 +68,7 @@ export type PlanChangeSuggestion = z.infer<typeof planChangeSuggestionSchema>
 /** Structured output of the single DAILY_LOG extraction pass. */
 export const dailyLogExtractionSchema = z.object({
   observations: z.array(extractedObservationSchema),
+  adHocActions: z.array(extractedAdHocActionSchema),
   planChangeSuggestions: z.array(planChangeSuggestionSchema),
   message: z.string().trim().max(2000)
 })
@@ -57,10 +80,16 @@ export const observationDraftSchema = extractedObservationSchema.extend({
 })
 export type ObservationDraft = z.infer<typeof observationDraftSchema>
 
+/** A draft ad-hoc action once persisted: extraction fields + a stable `changeId`. */
+export const adHocActionDraftSchema = extractedAdHocActionSchema.extend({
+  changeId: z.string().uuid()
+})
+export type AdHocActionDraft = z.infer<typeof adHocActionDraftSchema>
+
 /** The DAILY_LOG draft envelope stored in `CareAgentSession.draft`. */
 export const dailyLogDraftSchema = z.object({
   completions: z.array(z.unknown()),
-  adHocActions: z.array(z.unknown()),
+  adHocActions: z.array(adHocActionDraftSchema),
   observations: z.array(observationDraftSchema),
   planChangeSuggestions: z.array(planChangeSuggestionSchema)
 })
