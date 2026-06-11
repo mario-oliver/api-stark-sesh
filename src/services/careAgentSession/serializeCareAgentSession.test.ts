@@ -133,6 +133,26 @@ describe('serializeCareAgentSession — unified wire shape', () => {
     assert.equal(payload.voiceNoteId, 'vn-1')
   })
 
+  it('DAILY_LOG: planChangeSuggestions reach the wire payload intact (issue 0015)', () => {
+    const draft = {
+      completions: [],
+      adHocActions: [],
+      observations: [],
+      planChangeSuggestions: [
+        { text: 'add more reps to the morning stretches going forward', likelyAction: 'morning stretches' },
+        { text: 'switch the daily walk to evenings', likelyAction: null }
+      ]
+    }
+    const payload = serializeCareAgentSession(
+      baseRow({ kind: 'DAILY_LOG', status: 'DRAFT_READY', draft, voiceNoteId: 'vn-2' })
+    )
+    assert.equal(payload.kind, 'DAILY_LOG')
+    assert.deepEqual(
+      (payload.draft as { planChangeSuggestions: unknown[] }).planChangeSuggestions,
+      draft.planChangeSuggestions
+    )
+  })
+
   it('DAILY_LOG: a null draft (e.g. a FAILED session) stays null', () => {
     const payload = serializeCareAgentSession(baseRow({ kind: 'DAILY_LOG', status: 'FAILED', draft: null }))
     assert.equal(payload.draft, null)

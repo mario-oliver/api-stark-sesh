@@ -1243,6 +1243,165 @@ type _DcaHasVoiceNoteId =
   'voiceNoteId' extends keyof DailyCareActionGroupByOutputType ? true : never
 const _dcaVoiceNoteIdProof: _DcaHasVoiceNoteId = true
 
+// ── Plan-change detection → inert suggestions (issue 0015) ────────────────────
+// Extraction may emit planChangeSuggestions[{text, likelyAction}]; they ride the
+// draft envelope to the wire but are structurally un-committable (no changeId) and
+// the confirm transaction never reads them. ADR-0003 decision 8.
+
+describe('DAILY_LOG plan-change detection → inert suggestions (issue 0015)', () => {
+  it('(criterion 1) a plan-change utterance yields a planChangeSuggestions[] entry with text + likelyAction', async () => {
+    nextExtraction = async () => ({
+      observations: [],
+      adHocActions: [],
+      planChangeSuggestions: [
+        { text: 'add more reps to the morning stretches going forward', likelyAction: 'morning stretches' }
+      ],
+      message: 'Noted a possible plan change for review.'
+    })
+
+    const { session, error } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    assert.equal(error, null)
+    assert.equal(session.status, 'DRAFT_READY')
+    const draft = session.draft as {
+      planChangeSuggestions: Array<{ text: string; likelyAction: string | null }>
+    }
+    assert.equal(draft.planChangeSuggestions.length, 1)
+    assert.equal(draft.planChangeSuggestions[0].text, 'add more reps to the morning stretches going forward')
+    assert.equal(draft.planChangeSuggestions[0].likelyAction, 'morning stretches')
+  })
+
+  it('(criterion 2) confirm with every changeId selected commits no CareAction/CarePlan attributable to a suggestion', async () => {
+    nextExtraction = async () => ({
+      observations: [
+        {
+          type: 'LIMPING',
+          severity: 'MILD',
+          bodyArea: 'left front leg',
+          note: 'limping on left front leg',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      adHocActions: [],
+      planChangeSuggestions: [{ text: 'increase laser to daily going forward', likelyAction: 'laser therapy' }],
+      message: 'one observation plus a plan-change hint'
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    const draft = session.draft as {
+      observations: Array<{ changeId: string }>
+      adHocActions: Array<{ changeId: string }>
+      completions: Array<{ changeId: string }>
+      planChangeSuggestions: unknown[]
+    }
+    // Select EVERY committable changeId in the draft — suggestions contribute none.
+    const allChangeIds = [...draft.observations, ...draft.adHocActions, ...draft.completions].map(
+      i => i.changeId
+    )
+
+    const { committed } = await service.confirmDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      selectedChangeIds: allChangeIds
+    })
+
+    assert.equal(committed, 1, 'only the observation commits; the suggestion contributes nothing')
+    assert.equal(observations.length, 1)
+    assert.equal(dailyCareActions.length, 0, 'no DailyCareAction/CarePlan write derived from a plan-change suggestion')
+    // The suggestion is still present on the draft — inert, not consumed by commit.
+    assert.equal(draft.planChangeSuggestions.length, 1)
+  })
+
+  it('(criterion 3) a suggestion carries no changeId, and a forged id in selectedChangeIds commits nothing', async () => {
+    nextExtraction = async () => ({
+      observations: [],
+      adHocActions: [],
+      planChangeSuggestions: [{ text: 'switch the daily walk to evenings from now on', likelyAction: null }],
+      message: 'plan-change only'
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    const draft = session.draft as { planChangeSuggestions: Array<Record<string, unknown>> }
+    assert.equal(draft.planChangeSuggestions.length, 1)
+    // Structurally un-committable: it has no changeId the commit selector recognizes.
+    assert.ok(
+      !('changeId' in draft.planChangeSuggestions[0]),
+      'a plan-change suggestion has no changeId'
+    )
+
+    // Even if a client forges an id and forces it into the selection, nothing commits.
+    const { committed } = await service.confirmDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      selectedChangeIds: [randomUUID()]
+    })
+    assert.equal(committed, 0)
+    assert.equal(observations.length, 0)
+    assert.equal(dailyCareActions.length, 0)
+  })
+
+  it('(criterion 4) a pure completion/observation transcript produces an empty planChangeSuggestions[]', async () => {
+    const planned = seedPlannedAction({ name: 'morning stretches', bucket: 'MOBILITY' })
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: planned.id as string,
+          nameSnapshot: 'morning stretches',
+          bucket: 'MOBILITY',
+          actualReps: 10,
+          actualDurationSeconds: null,
+          tolerance: 'GOOD',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      observations: [
+        {
+          type: 'LIMPING',
+          severity: null,
+          bodyArea: null,
+          note: 'slight limp afterward',
+          extractionConfidence: 0.8,
+          needsReview: false
+        }
+      ],
+      adHocActions: [],
+      planChangeSuggestions: [],
+      message: 'a completion and an observation, no plan change'
+    })
+
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    const draft = session.draft as {
+      planChangeSuggestions: unknown[]
+      completions: unknown[]
+      observations: unknown[]
+    }
+    assert.deepEqual(draft.planChangeSuggestions, [], 'no suggestions fabricated when there is no plan-change intent')
+    assert.equal(draft.completions.length, 1)
+    assert.equal(draft.observations.length, 1)
+  })
+})
+
 describe('migration — DailyCareAction.voiceNoteId on the generated client', () => {
   it('voiceNoteId is a key of the generated DailyCareAction type', () => {
     assert.equal(_dcaVoiceNoteIdProof, true)
