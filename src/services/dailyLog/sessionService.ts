@@ -6,7 +6,9 @@ import { todayUtcDateString } from '../dailyCare/dateUtils.js'
 import {
   createCareAgentSession,
   deleteCareAgentSession,
-  findCareAgentSession
+  findCareAgentSession,
+  parseStoredMessages,
+  updateCareAgentSession
 } from '../careAgentSession/sessionRepository.js'
 import { loadDailyLogContext } from './dailyLogContext.js'
 import { runDailyLogExtraction } from './extraction.js'
@@ -18,6 +20,7 @@ import {
   type AdHocActionDraft,
   type CompletionDraft,
   type DailyLogDraft,
+  type DailyLogExtraction,
   type ObservationDraft,
   type PlannedActionContext,
   type StoredMessage
@@ -149,6 +152,42 @@ function selectByChangeIds<T extends { changeId: string }>(
     : items
 }
 
+/**
+ * Turn an extraction result into the stored draft envelope: keep only completions
+ * matched to a REAL instantiated planned action (drop hallucinated ids server-side,
+ * ADR-0003 #6) and stamp a stable `changeId` on every reviewable item. Shared by the
+ * create pass and the one-round resolution pass (issue 0014) so both build the draft
+ * identically; blockers live outside the draft, in `questions[]`.
+ */
+function buildDailyLogDraft(
+  extraction: DailyLogExtraction,
+  plannedActions: PlannedActionContext[]
+): DailyLogDraft {
+  const plannedIds = new Set(plannedActions.map(p => p.dailyCareActionId))
+  const completions: CompletionDraft[] = extraction.completions
+    .filter(c => plannedIds.has(c.dailyCareActionId))
+    .map(c => ({ changeId: randomUUID(), ...c }))
+  const observations: ObservationDraft[] = extraction.observations.map(o => ({
+    changeId: randomUUID(),
+    ...o
+  }))
+  const adHocActions: AdHocActionDraft[] = extraction.adHocActions.map(a => ({
+    changeId: randomUUID(),
+    ...a
+  }))
+  return {
+    completions,
+    adHocActions,
+    observations,
+    planChangeSuggestions: extraction.planChangeSuggestions
+  }
+}
+
+/** One assistant turn from the extraction `message`, or no turn at all. */
+function agentMessages(message: string): StoredMessage[] {
+  return message.trim() ? [{ role: 'assistant', content: message.trim() }] : []
+}
+
 // ── Create: transcript → extraction → reviewable draft ─────────────────────────
 
 export async function createDailyLogSession(args: {
@@ -187,46 +226,113 @@ export async function createDailyLogSession(args: {
     return { session, error }
   }
 
-  // Keep only completions the model matched to a REAL instantiated planned action.
   // Dropping unknown ids enforces "no bogus completion" server-side even if the
-  // model hallucinates an id (ADR-0003 #6; issue 0013 acceptance criterion 4).
-  const plannedIds = new Set(plannedActions.map(p => p.dailyCareActionId))
-  const completions: CompletionDraft[] = extraction.completions
-    .filter(c => plannedIds.has(c.dailyCareActionId))
-    .map(c => ({ changeId: randomUUID(), ...c }))
+  // model hallucinates an id (ADR-0003 #6; issue 0013 acceptance criterion 4). The
+  // partial draft holds whatever WAS placeable; a blocked item is absent here and
+  // described by `questions[]` instead.
+  const draft = buildDailyLogDraft(extraction, plannedActions)
 
-  const observations: ObservationDraft[] = extraction.observations.map(o => ({
-    changeId: randomUUID(),
-    ...o
-  }))
-  const adHocActions: AdHocActionDraft[] = extraction.adHocActions.map(a => ({
-    changeId: randomUUID(),
-    ...a
-  }))
-  const draft: DailyLogDraft = {
-    completions,
-    adHocActions,
-    observations,
-    planChangeSuggestions: extraction.planChangeSuggestions
+  // ADR-0003 decision 5 — blocked-only, one round. A genuine blocker (a completion
+  // ambiguous between multiple planned actions, or an un-inferable required field) →
+  // AWAITING_INPUT with the question(s); the draft is NOT finalized for confirm.
+  // Soft uncertainty never reaches here (it rides `needsReview` in the draft).
+  if (extraction.questions.length > 0) {
+    const session = await createCareAgentSession({
+      dogId: args.dogId,
+      userId: args.userId,
+      kind: KIND,
+      status: 'AWAITING_INPUT',
+      messages: agentMessages(extraction.message),
+      questions: extraction.questions,
+      draft: encodeDailyLogDraft(draft),
+      voiceNoteId: args.voiceNoteId
+    })
+    return { session, error: null }
   }
 
   // Nothing loggable → DRAFT_READY with an empty draft + an agent message
   // (ADR-0003 decision 9). FAILED is reserved for real extraction errors above.
-  const messages: StoredMessage[] = extraction.message.trim()
-    ? [{ role: 'assistant', content: extraction.message.trim() }]
-    : []
-
   const session = await createCareAgentSession({
     dogId: args.dogId,
     userId: args.userId,
     kind: KIND,
     status: 'DRAFT_READY',
-    messages,
+    messages: agentMessages(extraction.message),
+    questions: [],
     draft: encodeDailyLogDraft(draft),
     voiceNoteId: args.voiceNoteId
   })
 
   return { session, error: null }
+}
+
+// ── Send a reply: resolve the one clarifying round → DRAFT_READY ────────────────
+
+/**
+ * The one round of AWAITING_INPUT (ADR-0003 decision 5, issue 0014). The caregiver's
+ * reply to the blocking question re-runs extraction in RESOLUTION mode (original
+ * transcript + their answer) and resolves to DRAFT_READY best-effort. The round is
+ * capped: any further question the model emits is ignored — remaining uncertainty
+ * rides `needsReview` — so a DAILY_LOG session never re-enters AWAITING_INPUT.
+ */
+export async function sendDailyLogMessage(args: {
+  dogId: string
+  userId: string
+  sessionId: string
+  message: string
+}) {
+  const session = await findCareAgentSession({
+    id: args.sessionId,
+    dogId: args.dogId,
+    userId: args.userId,
+    kind: KIND,
+    status: 'AWAITING_INPUT'
+  })
+  if (!session) throw new Error('Session not found or not awaiting input')
+
+  const priorQuestions = Array.isArray(session.questions) ? (session.questions as string[]) : []
+  const answer = args.message.trim()
+  const messages: StoredMessage[] = [
+    ...parseStoredMessages(session.messages),
+    { role: 'user', content: answer }
+  ]
+
+  // Re-derive context from the DURABLE VoiceNote (the session is transient) plus
+  // today's planned actions, exactly as the create pass did.
+  if (!session.voiceNoteId) throw new Error('VoiceNote not found')
+  const transcriptContext = await loadDailyLogContext({
+    dogId: args.dogId,
+    voiceNoteId: session.voiceNoteId
+  })
+  if (!transcriptContext) throw new Error('VoiceNote not found')
+  const today = await resolveTodayLog(args.dogId, todayUtcDateString())
+  const plannedActions = todaysPlannedActions(today)
+  const context = { ...transcriptContext, plannedActions }
+
+  let extraction
+  try {
+    extraction = await runDailyLogExtraction({
+      context,
+      clarification: { questions: priorQuestions, answer }
+    })
+  } catch (err) {
+    // Mirror create (ADR-0003 #10): a resolution error → FAILED; the durable
+    // VoiceNote is left untouched. The user turn is still recorded.
+    const error = err instanceof Error ? err.message : 'Extraction failed'
+    const updated = await updateCareAgentSession(session.id, { status: 'FAILED', messages })
+    return { session: updated, error }
+  }
+
+  const draft = buildDailyLogDraft(extraction, plannedActions)
+  const updated = await updateCareAgentSession(session.id, {
+    status: 'DRAFT_READY',
+    messages: [...messages, ...agentMessages(extraction.message)],
+    // One round only: clear the questions even if the model emitted more.
+    questions: [],
+    draft: encodeDailyLogDraft(draft)
+  })
+
+  return { session: updated, error: null }
 }
 
 // ── Confirm: commit selected observations onto today's log ─────────────────────

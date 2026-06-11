@@ -142,9 +142,12 @@ const VOICE_NOTE_ID = '11111111-1111-4111-8111-111111111111'
 // wrapper fills the rest (notably `completions: []`) to a full DailyLogExtraction.
 let nextExtraction: () => Promise<Partial<DailyLogExtraction>> = async () => ({})
 
-// Captures what createDailyLogSession fed the extraction pass — used to prove
-// today's planned actions are injected as the matching candidate list (0013).
-let lastExtractionInput: { context: DailyLogContext } | null = null
+// Captures what createDailyLogSession / sendDailyLogMessage fed the extraction
+// pass — used to prove today's planned actions are injected (0013) and, on the
+// second round, that the user's answer reaches the seam as a clarification (0014).
+let lastExtractionInput:
+  | { context: DailyLogContext; clarification?: { questions: string[]; answer: string } }
+  | null = null
 
 let nextContext: () => Promise<{ dogId: string; dogName: string; transcript: string } | null> =
   async () => ({ dogId: 'dog-1', dogName: 'Rex', transcript: 'he was limping on his left front leg' })
@@ -160,7 +163,10 @@ before(async () => {
   })
   await mock.module(new URL('./extraction.ts', here).href, {
     namedExports: {
-      runDailyLogExtraction: async (input: { context: DailyLogContext }) => {
+      runDailyLogExtraction: async (input: {
+        context: DailyLogContext
+        clarification?: { questions: string[]; answer: string }
+      }) => {
         lastExtractionInput = input
         const e = await nextExtraction()
         return {
@@ -168,6 +174,7 @@ before(async () => {
           observations: [],
           adHocActions: [],
           planChangeSuggestions: [],
+          questions: [],
           message: '',
           ...e
         }
@@ -877,6 +884,217 @@ describe('DAILY_LOG confirm — completions update the matched planned row in pl
 
     const row = dailyCareActions.find(r => r.id === planned.id)!
     assert.equal(row.actualReps, 12, 'existing actual preserved through a null re-log')
+  })
+})
+
+// ── Blocked-only clarifying questions (issue 0014) ────────────────────────────
+// Extraction is mocked (per ADR-0003 we assert routing, not model wording). These
+// prove the AWAITING_INPUT blocker branch: a genuine blocker (ambiguous completion
+// or un-inferable required field) → AWAITING_INPUT + questions[] and nothing
+// committed; the user's sendMessage reply resolves to DRAFT_READY; soft uncertainty
+// never asks; and the round is capped at one (ADR-0003 decision 5).
+
+describe('DAILY_LOG blocked-only clarifying questions (issue 0014)', () => {
+  it('(criterion 1) ambiguous completion between two planned stretches → AWAITING_INPUT, non-empty questions[], nothing committed', async () => {
+    seedPlannedAction({ name: 'morning stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    seedPlannedAction({ name: 'evening stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    // The model can't pick which stretch — it emits no completion and one question.
+    nextExtraction = async () => ({
+      completions: [],
+      observations: [],
+      adHocActions: [],
+      questions: ['You said you did his stretches — was that the morning or the evening stretches?'],
+      message: ''
+    })
+
+    const { session, error } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    assert.equal(error, null)
+    assert.equal(session.status, 'AWAITING_INPUT')
+    const questions = session.questions as string[]
+    assert.ok(Array.isArray(questions) && questions.length > 0, 'a blocking question is surfaced')
+    // nothing committed: no rows written and neither planned row was flipped COMPLETED
+    assert.equal(observations.length, 0)
+    assert.ok(
+      dailyCareActions.every(a => a.status === 'PENDING'),
+      'no planned row committed while blocked'
+    )
+    // the draft is not finalized for confirm — confirm only finds DRAFT_READY
+    await assert.rejects(
+      service.confirmDailyLogSession({ dogId: 'dog-1', userId: 'user-1', sessionId: session.id }),
+      /not ready|not found/i
+    )
+  })
+
+  it('(criterion 2) a sendMessage reply naming the action resolves AWAITING_INPUT → DRAFT_READY with the right completion', async () => {
+    const morning = seedPlannedAction({ name: 'morning stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    seedPlannedAction({ name: 'evening stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    nextExtraction = async () => ({
+      questions: ['Morning or evening stretches?'],
+      message: ''
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+    assert.equal(session.status, 'AWAITING_INPUT')
+
+    // Round 2: the resolution pass, now given the user's answer, returns the match.
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: morning.id as string,
+          nameSnapshot: 'morning stretches',
+          bucket: 'MOBILITY',
+          actualReps: null,
+          actualDurationSeconds: null,
+          tolerance: 'GOOD',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      questions: [],
+      message: 'Got it — logged the morning stretches.'
+    })
+
+    const res = await service.sendDailyLogMessage({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      message: 'the morning ones'
+    })
+
+    assert.equal(res.error, null)
+    assert.equal(res.session.status, 'DRAFT_READY')
+    const draft = res.session.draft as { completions: Array<{ dailyCareActionId: string }> }
+    assert.equal(draft.completions.length, 1)
+    assert.equal(draft.completions[0].dailyCareActionId, morning.id, 'resolved to the named planned action')
+    // the user's answer reached the extraction seam as a clarification (one-round resolution)
+    assert.ok(lastExtractionInput?.clarification, 'clarification passed to the resolution pass')
+    assert.equal(lastExtractionInput?.clarification?.answer, 'the morning ones')
+    assert.ok((lastExtractionInput?.clarification?.questions ?? []).length > 0, 'prior questions carried into the pass')
+    // questions cleared once resolved
+    assert.deepEqual(res.session.questions as string[], [])
+    // the user turn is recorded
+    const messages = res.session.messages as Array<{ role: string; content: string }>
+    assert.ok(messages.some(m => m.role === 'user' && m.content === 'the morning ones'))
+  })
+
+  it('(criterion 3) an un-inferable HealthObservation.type → AWAITING_INPUT with a question, nothing committed', async () => {
+    // The model noticed something off but can't pin the taxonomy type — it asks.
+    nextExtraction = async () => ({
+      observations: [],
+      questions: ['You mentioned something seemed off — was it limping, stiffness, low energy, or something else?'],
+      message: ''
+    })
+
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    assert.equal(session.status, 'AWAITING_INPUT')
+    assert.ok((session.questions as string[]).length > 0)
+    assert.equal(observations.length, 0, 'nothing committed while blocked')
+  })
+
+  it('(criterion 4) missing reps / uncertain severity rides needsReview → DRAFT_READY directly, no question', async () => {
+    // Soft uncertainty: a possible limp with no severity, plus a completion with no
+    // reps. ADR-0003 decision 5 — this stays in the draft flagged needsReview, never a question.
+    const planned = seedPlannedAction({ name: 'hamstring stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: planned.id as string,
+          nameSnapshot: 'hamstring stretches',
+          bucket: 'MOBILITY',
+          actualReps: null,
+          actualDurationSeconds: null,
+          tolerance: null,
+          extractionConfidence: 0.55,
+          needsReview: true
+        }
+      ],
+      observations: [
+        {
+          type: 'LIMPING',
+          severity: null,
+          bodyArea: null,
+          note: 'maybe a slight limp, hard to tell',
+          extractionConfidence: 0.4,
+          needsReview: true
+        }
+      ],
+      questions: [],
+      message: 'Logged his stretches and a possible limp.'
+    })
+
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    assert.equal(session.status, 'DRAFT_READY', 'soft uncertainty does not block')
+    assert.deepEqual(session.questions as string[], [], 'no question asked')
+    const draft = session.draft as {
+      completions: Array<{ needsReview: boolean }>
+      observations: Array<{ needsReview: boolean }>
+    }
+    assert.equal(draft.completions[0].needsReview, true)
+    assert.equal(draft.observations[0].needsReview, true)
+  })
+
+  it('(criterion 5) only one round: a second blocker after the reply does not loop — resolves DRAFT_READY with needsReview', async () => {
+    const morning = seedPlannedAction({ name: 'morning stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    nextExtraction = async () => ({
+      questions: ['Morning or evening stretches?'],
+      message: ''
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+    assert.equal(session.status, 'AWAITING_INPUT')
+
+    // The user's answer is still vague, so the resolution pass emits ANOTHER question.
+    // The one-round cap means the service must ignore it and resolve best-effort.
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: morning.id as string,
+          nameSnapshot: 'morning stretches',
+          bucket: 'MOBILITY',
+          actualReps: null,
+          actualDurationSeconds: null,
+          tolerance: null,
+          extractionConfidence: 0.5,
+          needsReview: true
+        }
+      ],
+      questions: ['Still not totally sure which stretch — can you confirm?'],
+      message: 'Best guess: morning stretches.'
+    })
+
+    const res = await service.sendDailyLogMessage({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      message: 'not sure, the usual'
+    })
+
+    assert.equal(res.session.status, 'DRAFT_READY', 'does not re-enter AWAITING_INPUT')
+    assert.deepEqual(res.session.questions as string[], [], 'no second round of questions')
+    const draft = res.session.draft as { completions: Array<{ needsReview: boolean }> }
+    assert.equal(draft.completions.length, 1)
+    assert.equal(draft.completions[0].needsReview, true, 'remaining uncertainty rides needsReview')
   })
 })
 
