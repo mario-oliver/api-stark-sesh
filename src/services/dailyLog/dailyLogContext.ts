@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js'
-import type { DailyLogContext } from './types.js'
+import type { TranscriptContext } from './types.js'
 
 /**
  * Load the durable VoiceNote transcript the DAILY_LOG session extracts over.
@@ -10,7 +10,7 @@ import type { DailyLogContext } from './types.js'
 export async function loadDailyLogContext(args: {
   dogId: string
   voiceNoteId: string
-}): Promise<DailyLogContext | null> {
+}): Promise<TranscriptContext | null> {
   const voiceNote = await prisma.voiceNote.findFirst({
     where: { id: args.voiceNoteId, dogId: args.dogId },
     include: { dog: { select: { name: true } } }

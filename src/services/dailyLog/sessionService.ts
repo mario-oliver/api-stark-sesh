@@ -12,11 +12,14 @@ import { loadDailyLogContext } from './dailyLogContext.js'
 import { runDailyLogExtraction } from './extraction.js'
 import {
   adHocActionDraftSchema,
+  completionDraftSchema,
   observationDraftSchema,
   planChangeSuggestionSchema,
   type AdHocActionDraft,
+  type CompletionDraft,
   type DailyLogDraft,
   type ObservationDraft,
+  type PlannedActionContext,
   type StoredMessage
 } from './types.js'
 
@@ -26,14 +29,21 @@ const KIND = 'DAILY_LOG' as const
 // ── Draft envelope (DAILY_LOG) ────────────────────────────────────────────────
 // The unified `draft` column stores the review envelope
 // `{ completions, adHocActions, observations, planChangeSuggestions }`. v1 fills
-// `observations` (0011) and `adHocActions` (0012); `completions` lands in 0013 and
-// `planChangeSuggestions` in 0015.
+// `observations` (0011), `adHocActions` (0012), and `completions` (0013);
+// `planChangeSuggestions` lands in 0015.
 
 function decodeDailyLogDraft(raw: unknown): DailyLogDraft {
   if (!raw || typeof raw !== 'object') {
     return { completions: [], adHocActions: [], observations: [], planChangeSuggestions: [] }
   }
   const d = raw as Record<string, unknown>
+
+  const completions = Array.isArray(d.completions)
+    ? d.completions.flatMap(c => {
+        const parsed = completionDraftSchema.safeParse(c)
+        return parsed.success ? [parsed.data] : []
+      })
+    : []
 
   const observations = Array.isArray(d.observations)
     ? d.observations.flatMap(o => {
@@ -57,7 +67,7 @@ function decodeDailyLogDraft(raw: unknown): DailyLogDraft {
     : []
 
   return {
-    completions: Array.isArray(d.completions) ? d.completions : [],
+    completions,
     adHocActions,
     observations,
     planChangeSuggestions
@@ -66,11 +76,62 @@ function decodeDailyLogDraft(raw: unknown): DailyLogDraft {
 
 function encodeDailyLogDraft(draft: DailyLogDraft): Prisma.InputJsonValue {
   return {
-    completions: [],
+    completions: draft.completions,
     adHocActions: draft.adHocActions,
     observations: draft.observations,
     planChangeSuggestions: draft.planChangeSuggestions
   } as Prisma.InputJsonValue
+}
+
+/**
+ * Today's instantiated planned actions, as the matching candidate list for the
+ * extraction pass (ADR-0003 #6). Drawn from `resolveTodayLog` (the single
+ * instantiation owner) — planned rows are the instantiated ones (`careActionId`
+ * not null); ad-hoc rows (`careActionId: null`) are never completion targets.
+ */
+function todaysPlannedActions(payload: unknown): PlannedActionContext[] {
+  const actions = (payload as { dailyLog?: { dailyCareActions?: unknown } } | null)?.dailyLog
+    ?.dailyCareActions
+  if (!Array.isArray(actions)) return []
+  return actions
+    .filter(
+      (a): a is { id: string; careActionId: string | null; nameSnapshot: string; bucket: string; status: string } =>
+        !!a && typeof a === 'object' && (a as { careActionId?: unknown }).careActionId != null
+    )
+    .map(a => ({
+      dailyCareActionId: a.id,
+      name: a.nameSnapshot,
+      bucket: a.bucket,
+      status: a.status
+    }))
+}
+
+/**
+ * Collapse selected completions by `dailyCareActionId` so one matched row gets a
+ * single in-place update even if the draft names it twice, merging actuals so a
+ * later non-null value wins (ADR-0003 #7 — "merges later actuals"). The
+ * cross-session convergence (re-logging in a new session) is handled by the
+ * `@@unique([dailyCareLogId, careActionId])` row being reused by `resolveTodayLog`;
+ * this is the within-draft companion.
+ */
+function mergeCompletionsById(completions: CompletionDraft[]): CompletionDraft[] {
+  const byId = new Map<string, CompletionDraft>()
+  for (const c of completions) {
+    const prev = byId.get(c.dailyCareActionId)
+    byId.set(
+      c.dailyCareActionId,
+      prev
+        ? {
+            ...prev,
+            ...c,
+            actualReps: c.actualReps ?? prev.actualReps,
+            actualDurationSeconds: c.actualDurationSeconds ?? prev.actualDurationSeconds,
+            tolerance: c.tolerance ?? prev.tolerance
+          }
+        : c
+    )
+  }
+  return [...byId.values()]
 }
 
 /**
@@ -95,11 +156,18 @@ export async function createDailyLogSession(args: {
   userId: string
   voiceNoteId: string
 }) {
-  const context = await loadDailyLogContext({
+  const transcriptContext = await loadDailyLogContext({
     dogId: args.dogId,
     voiceNoteId: args.voiceNoteId
   })
-  if (!context) throw new Error('VoiceNote not found')
+  if (!transcriptContext) throw new Error('VoiceNote not found')
+
+  // ADR-0003 #6: matching runs against TODAY'S instantiated planned actions.
+  // resolveTodayLog is the single instantiation owner — reuse it (not re-instantiate)
+  // and feed its planned rows to the extraction pass as the candidate match list.
+  const today = await resolveTodayLog(args.dogId, todayUtcDateString())
+  const plannedActions = todaysPlannedActions(today)
+  const context = { ...transcriptContext, plannedActions }
 
   let extraction
   try {
@@ -119,6 +187,14 @@ export async function createDailyLogSession(args: {
     return { session, error }
   }
 
+  // Keep only completions the model matched to a REAL instantiated planned action.
+  // Dropping unknown ids enforces "no bogus completion" server-side even if the
+  // model hallucinates an id (ADR-0003 #6; issue 0013 acceptance criterion 4).
+  const plannedIds = new Set(plannedActions.map(p => p.dailyCareActionId))
+  const completions: CompletionDraft[] = extraction.completions
+    .filter(c => plannedIds.has(c.dailyCareActionId))
+    .map(c => ({ changeId: randomUUID(), ...c }))
+
   const observations: ObservationDraft[] = extraction.observations.map(o => ({
     changeId: randomUUID(),
     ...o
@@ -128,7 +204,7 @@ export async function createDailyLogSession(args: {
     ...a
   }))
   const draft: DailyLogDraft = {
-    completions: [],
+    completions,
     adHocActions,
     observations,
     planChangeSuggestions: extraction.planChangeSuggestions
@@ -173,6 +249,11 @@ export async function confirmDailyLogSession(args: {
   const draft = decodeDailyLogDraft(session.draft)
   const selectedObservations = selectByChangeIds(draft.observations, args.selectedChangeIds)
   const selectedAdHocActions = selectByChangeIds(draft.adHocActions, args.selectedChangeIds)
+  // Completions update PLANNED rows in place; collapse by id so one row gets a
+  // single merged update (ADR-0003 #7).
+  const selectedCompletions = mergeCompletionsById(
+    selectByChangeIds(draft.completions, args.selectedChangeIds)
+  )
 
   // Reuse the single instantiation owner for today's DailyCareLog (ADR-0003 #6);
   // its own daily-action instantiation runs before the commit transaction below.
@@ -181,9 +262,9 @@ export async function confirmDailyLogSession(args: {
   const completedAt = new Date()
 
   // ADR-0003: the day's outputs commit in ONE transaction — the selected
-  // observations, the ad-hoc actions, and the COMMITTED status flip succeed or
-  // fail together, so a mid-commit failure can never leave orphan rows on a
-  // still-DRAFT_READY session. DAILY_LOG commits HealthObservations /
+  // observations, the ad-hoc actions, the completion updates, and the COMMITTED
+  // status flip succeed or fail together, so a mid-commit failure can never leave
+  // orphan rows on a still-DRAFT_READY session. DAILY_LOG commits HealthObservations /
   // DailyCareActions, not a plan/action (no polymorphic commit FK), so the status
   // flip is inlined here rather than going through commitCareAgentSession.
   const results = await prisma.$transaction([
@@ -225,6 +306,26 @@ export async function confirmDailyLogSession(args: {
         }
       })
     ),
+    // Completion rows: UPDATE the matched planned DailyCareAction IN PLACE (issue
+    // 0013, ADR-0003 #6/#7). Keep source PLAN (it stays a planned action), flip it
+    // COMPLETED, and stamp actuals + tolerance + the completing VoiceNote. `?? undefined`
+    // means a null actual never clobbers a value already on the row, so a later
+    // re-log that adds "12 reps" merges rather than wipes. Re-logging in a fresh
+    // session converges on this same row via @@unique([dailyCareLogId, careActionId]).
+    ...selectedCompletions.map(c =>
+      prisma.dailyCareAction.update({
+        where: { id: c.dailyCareActionId },
+        data: {
+          status: 'COMPLETED',
+          completedAt,
+          completedByUserId: args.userId,
+          voiceNoteId: session.voiceNoteId,
+          actualReps: c.actualReps ?? undefined,
+          actualDurationSeconds: c.actualDurationSeconds ?? undefined,
+          tolerance: c.tolerance ?? undefined
+        }
+      })
+    ),
     prisma.careAgentSession.update({
       where: { id: session.id },
       data: { status: 'COMMITTED' }
@@ -236,10 +337,15 @@ export async function confirmDailyLogSession(args: {
     selectedObservations.length,
     selectedObservations.length + selectedAdHocActions.length
   )
+  const completions = results.slice(
+    selectedObservations.length + selectedAdHocActions.length,
+    selectedObservations.length + selectedAdHocActions.length + selectedCompletions.length
+  )
   return {
     observations,
     adHocActions,
-    committed: observations.length + adHocActions.length
+    completions,
+    committed: observations.length + adHocActions.length + completions.length
   }
 }
 

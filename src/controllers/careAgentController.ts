@@ -166,10 +166,12 @@ export class CareAgentController {
           sessionId,
           selectedChangeIds: body.selectedChangeIds
         })
+        // `committed` totals the day's logged entries — observations (0011), ad-hoc
+        // actions (0012), and completions (0013) — so the message stays count-accurate.
         return sendCreated(
           reply,
           { committed, status: 'committed' },
-          `Logged ${committed} observation${committed === 1 ? '' : 's'}`
+          `Logged ${committed} item${committed === 1 ? '' : 's'}`
         )
       }
 

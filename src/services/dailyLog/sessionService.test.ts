@@ -12,7 +12,8 @@
  */
 import { describe, it, before, beforeEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import type { DailyLogExtraction } from './types.js'
+import { randomUUID } from 'node:crypto'
+import type { DailyLogContext, DailyLogExtraction, ExtractedCompletion } from './types.js'
 import type { DailyCareActionGroupByOutputType } from '../../generated/models/DailyCareAction.js'
 
 // ── In-memory Prisma fake ─────────────────────────────────────────────────────
@@ -100,8 +101,20 @@ const fakePrisma = {
   dailyCareAction: {
     async create({ data }: { data: Row }) {
       const now = new Date()
-      const row: Row = { id: `dca-${++seq}`, createdAt: now, updatedAt: now, ...data }
+      const row: Row = { createdAt: now, updatedAt: now, ...data, id: (data.id as string) ?? `dca-${++seq}` }
       dailyCareActions.push(row)
+      return { ...row }
+    },
+    // In-place update by id (issue 0013 completion commit). Mirrors Prisma: only
+    // the keys present in `data` are written, so `?? undefined` callers merge
+    // rather than clobber existing values.
+    async update({ where, data }: { where: { id: string }; data: Row }) {
+      const row = dailyCareActions.find(r => r.id === where.id)
+      if (!row) throw new Error(`dailyCareAction ${where.id} not found`)
+      for (const key of Object.keys(data)) {
+        if (data[key] !== undefined) row[key] = data[key]
+      }
+      row.updatedAt = new Date()
       return { ...row }
     }
   },
@@ -125,12 +138,13 @@ const fakePrisma = {
 
 const VOICE_NOTE_ID = '11111111-1111-4111-8111-111111111111'
 
-let nextExtraction: () => Promise<DailyLogExtraction> = async () => ({
-  observations: [],
-  adHocActions: [],
-  planChangeSuggestions: [],
-  message: ''
-})
+// Returns a Partial so a test only states the buckets it cares about; the mock
+// wrapper fills the rest (notably `completions: []`) to a full DailyLogExtraction.
+let nextExtraction: () => Promise<Partial<DailyLogExtraction>> = async () => ({})
+
+// Captures what createDailyLogSession fed the extraction pass — used to prove
+// today's planned actions are injected as the matching candidate list (0013).
+let lastExtractionInput: { context: DailyLogContext } | null = null
 
 let nextContext: () => Promise<{ dogId: string; dogName: string; transcript: string } | null> =
   async () => ({ dogId: 'dog-1', dogName: 'Rex', transcript: 'he was limping on his left front leg' })
@@ -145,14 +159,32 @@ before(async () => {
     namedExports: { prisma: fakePrisma }
   })
   await mock.module(new URL('./extraction.ts', here).href, {
-    namedExports: { runDailyLogExtraction: async () => nextExtraction() }
+    namedExports: {
+      runDailyLogExtraction: async (input: { context: DailyLogContext }) => {
+        lastExtractionInput = input
+        const e = await nextExtraction()
+        return {
+          completions: [],
+          observations: [],
+          adHocActions: [],
+          planChangeSuggestions: [],
+          message: '',
+          ...e
+        }
+      }
+    }
   })
   await mock.module(new URL('./dailyLogContext.ts', here).href, {
     namedExports: { loadDailyLogContext: async () => nextContext() }
   })
+  // resolveTodayLog is the instantiation owner; its planned rows (careActionId not
+  // null) are the live contents of the dailyCareActions fake, so seedPlannedAction
+  // shows up both in the matching candidate list and as an updatable row.
   await mock.module(new URL('../dailyCare/resolveTodayLog.ts', here).href, {
     namedExports: {
-      resolveTodayLog: async () => ({ dailyLog: { id: 'log-today' } }),
+      resolveTodayLog: async () => ({
+        dailyLog: { id: 'log-today', dailyCareActions: dailyCareActions.filter(a => a.careActionId != null) }
+      }),
       loadTodayPayload: async () => ({ dailyLog: { id: 'log-today' } })
     }
   })
@@ -166,12 +198,40 @@ beforeEach(() => {
   dailyCareActions.length = 0
   voiceNotes.clear()
   voiceNoteWrites = 0
+  lastExtractionInput = null
+  nextExtraction = async () => ({})
   nextContext = async () => ({
     dogId: 'dog-1',
     dogName: 'Rex',
     transcript: 'he was limping on his left front leg'
   })
 })
+
+/**
+ * Seed one of today's instantiated PLANNED DailyCareActions (source PLAN,
+ * careActionId set) into the fake. resolveTodayLog's mock surfaces it as a match
+ * candidate and the completion commit updates it in place.
+ */
+function seedPlannedAction(overrides: Partial<Row> & { name?: string } = {}): Row {
+  const id = (overrides.id as string) ?? randomUUID()
+  const row: Row = {
+    id,
+    dailyCareLogId: 'log-today',
+    careActionId: (overrides.careActionId as string) ?? randomUUID(),
+    bucket: overrides.bucket ?? 'MOBILITY',
+    source: 'PLAN',
+    nameSnapshot: overrides.name ?? 'morning stretches',
+    status: overrides.status ?? 'PENDING',
+    actualReps: overrides.actualReps ?? null,
+    actualDurationSeconds: overrides.actualDurationSeconds ?? null,
+    tolerance: overrides.tolerance ?? null,
+    voiceNoteId: null,
+    completedAt: null,
+    completedByUserId: null
+  }
+  dailyCareActions.push(row)
+  return row
+}
 
 // ── Create over a seeded observation transcript ───────────────────────────────
 
@@ -555,6 +615,268 @@ describe('DAILY_LOG confirm — selected ad-hoc actions become DailyCareAction r
     assert.equal(committed, 3, '1 observation + 2 ad-hoc actions')
     assert.equal(observations.length, 1)
     assert.equal(dailyCareActions.length, 2)
+  })
+})
+
+// ── Completions: match today's planned actions, update in place, idempotently ──
+// Issue 0013. Extraction is mocked (per ADR-0003 we assert routing + commit, not
+// model wording); these prove the injection of today's planned actions, the
+// completions[] draft, the in-place COMPLETED update keeping source PLAN, and the
+// convergence/merge on re-log.
+
+describe('DAILY_LOG create — completion matching against today\'s planned actions', () => {
+  it('injects today\'s planned actions as match context and emits a completions[] item referencing the matched dailyCareActionId', async () => {
+    const planned = seedPlannedAction({ name: 'hamstring stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: planned.id as string,
+          nameSnapshot: 'hamstring stretches',
+          bucket: 'MOBILITY',
+          actualReps: 12,
+          actualDurationSeconds: null,
+          tolerance: 'GOOD',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      message: 'Logged his stretches.'
+    })
+
+    const { session, error } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    assert.equal(error, null)
+    assert.equal(session.status, 'DRAFT_READY')
+
+    // (criterion 1, injection half) today's planned action is fed to extraction as a candidate
+    assert.ok(lastExtractionInput, 'extraction received an input')
+    assert.deepEqual(
+      lastExtractionInput.context.plannedActions.map(p => p.dailyCareActionId),
+      [planned.id]
+    )
+    assert.equal(lastExtractionInput.context.plannedActions[0].name, 'hamstring stretches')
+    assert.equal(lastExtractionInput.context.plannedActions[0].bucket, 'MOBILITY')
+    assert.equal(lastExtractionInput.context.plannedActions[0].status, 'PENDING')
+
+    // (criterion 1, draft half) the completion references the correct dailyCareActionId
+    const draft = session.draft as {
+      completions: Array<{
+        changeId: string
+        dailyCareActionId: string
+        nameSnapshot: string
+        bucket: string
+        actualReps: number | null
+        tolerance: string | null
+      }>
+      adHocActions: unknown[]
+      observations: unknown[]
+    }
+    assert.equal(draft.completions.length, 1)
+    assert.equal(draft.completions[0].dailyCareActionId, planned.id)
+    assert.equal(draft.completions[0].nameSnapshot, 'hamstring stretches')
+    assert.equal(draft.completions[0].bucket, 'MOBILITY')
+    assert.equal(draft.completions[0].actualReps, 12)
+    assert.equal(draft.completions[0].tolerance, 'GOOD')
+    assert.ok(typeof draft.completions[0].changeId === 'string' && draft.completions[0].changeId.length > 0)
+    // the other buckets of the same envelope stay empty here
+    assert.deepEqual(draft.adHocActions, [])
+    assert.deepEqual(draft.observations, [])
+  })
+
+  it('(criterion 4) an activity with no confident match routes to ad-hoc, not a bogus completion', async () => {
+    // no planned action seeded; the model routes the surprise walk to ad-hoc
+    nextExtraction = async () => ({
+      adHocActions: [
+        {
+          name: 'surprise 10-minute walk',
+          bucket: 'ACTIVITY',
+          actualReps: null,
+          actualDurationSeconds: 600,
+          extractionConfidence: 0.8,
+          needsReview: false
+        }
+      ],
+      message: 'Logged a walk.'
+    })
+
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    const draft = session.draft as { completions: unknown[]; adHocActions: Array<{ name: string }> }
+    assert.equal(draft.completions.length, 0, 'no bogus completion')
+    assert.equal(draft.adHocActions.length, 1)
+    assert.equal(draft.adHocActions[0].name, 'surprise 10-minute walk')
+  })
+
+  it('(criterion 4, defensive) a completion referencing an unknown action id is dropped server-side', async () => {
+    seedPlannedAction({ name: 'hamstring stretches', bucket: 'MOBILITY' })
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: randomUUID(), // not one of today's planned ids
+          nameSnapshot: 'hamstring stretches',
+          bucket: 'MOBILITY',
+          actualReps: 10,
+          actualDurationSeconds: null,
+          tolerance: null,
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      message: ''
+    })
+
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    const draft = session.draft as { completions: unknown[] }
+    assert.equal(draft.completions.length, 0, 'hallucinated id dropped — no bogus completion')
+  })
+})
+
+describe('DAILY_LOG confirm — completions update the matched planned row in place', () => {
+  async function seedPlannedCompletionDraft(opts?: {
+    actualReps?: number | null
+    tolerance?: ExtractedCompletion['tolerance']
+  }) {
+    const planned = seedPlannedAction({ name: 'hamstring stretches', bucket: 'MOBILITY', status: 'PENDING' })
+    // `in`-checks so an explicit `null` means "no value stated", not "use the default".
+    const actualReps = opts && 'actualReps' in opts ? opts.actualReps ?? null : 12
+    const tolerance = opts && 'tolerance' in opts ? opts.tolerance ?? null : 'GOOD'
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: planned.id as string,
+          nameSnapshot: 'hamstring stretches',
+          bucket: 'MOBILITY',
+          actualReps,
+          actualDurationSeconds: null,
+          tolerance,
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      message: ''
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+    return { session, planned }
+  }
+
+  it('(criterion 2) sets the matched row COMPLETED with actuals + voiceNoteId, keeps source PLAN, no new row', async () => {
+    const { session, planned } = await seedPlannedCompletionDraft()
+    const before = dailyCareActions.length
+
+    const { committed } = await service.confirmDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id
+    })
+
+    assert.equal(committed, 1)
+    assert.equal(dailyCareActions.length, before, 'updated in place — no second row created')
+    const row = dailyCareActions.find(r => r.id === planned.id)!
+    assert.ok(row)
+    assert.equal(row.status, 'COMPLETED')
+    assert.equal(row.actualReps, 12)
+    assert.equal(row.tolerance, 'GOOD')
+    assert.equal(row.voiceNoteId, VOICE_NOTE_ID)
+    assert.equal(row.completedByUserId, 'user-1')
+    assert.ok(row.completedAt)
+    assert.equal(row.source, 'PLAN', 'completion keeps source PLAN')
+    assert.equal(row.careActionId, planned.careActionId, 'still bound to its CareAction')
+
+    const committedSession = await service.getDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id
+    })
+    assert.equal(committedSession?.status, 'COMMITTED')
+  })
+
+  it('(criterion 3) re-logging the same completion converges on the same row and merges later actuals', async () => {
+    // First session: "we did his stretches" — no reps stated.
+    const { session: s1, planned } = await seedPlannedCompletionDraft({ actualReps: null, tolerance: null })
+    await service.confirmDailyLogSession({ dogId: 'dog-1', userId: 'user-1', sessionId: s1.id })
+
+    assert.equal(dailyCareActions.length, 1)
+    let row = dailyCareActions.find(r => r.id === planned.id)!
+    assert.equal(row.status, 'COMPLETED')
+    assert.equal(row.actualReps ?? null, null, 'no reps yet')
+
+    // Second session over the SAME planned row (resolveTodayLog reuses it): "...12 reps".
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: planned.id as string,
+          nameSnapshot: 'hamstring stretches',
+          bucket: 'MOBILITY',
+          actualReps: 12,
+          actualDurationSeconds: null,
+          tolerance: 'GOOD',
+          extractionConfidence: 0.92,
+          needsReview: false
+        }
+      ],
+      message: ''
+    })
+    const { session: s2 } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+    await service.confirmDailyLogSession({ dogId: 'dog-1', userId: 'user-1', sessionId: s2.id })
+
+    assert.equal(dailyCareActions.length, 1, 'no second row — converged on the unique planned row')
+    row = dailyCareActions.find(r => r.id === planned.id)!
+    assert.equal(row.actualReps, 12, 'later actuals merged in')
+    assert.equal(row.tolerance, 'GOOD')
+  })
+
+  it('a null actual on re-log does not clobber a value already on the row (merge, not overwrite)', async () => {
+    // First: 12 reps recorded.
+    const { session: s1, planned } = await seedPlannedCompletionDraft({ actualReps: 12, tolerance: 'GOOD' })
+    await service.confirmDailyLogSession({ dogId: 'dog-1', userId: 'user-1', sessionId: s1.id })
+    assert.equal(dailyCareActions.find(r => r.id === planned.id)!.actualReps, 12)
+
+    // Re-log with no reps stated — must keep the 12.
+    nextExtraction = async () => ({
+      completions: [
+        {
+          dailyCareActionId: planned.id as string,
+          nameSnapshot: 'hamstring stretches',
+          bucket: 'MOBILITY',
+          actualReps: null,
+          actualDurationSeconds: null,
+          tolerance: null,
+          extractionConfidence: 0.8,
+          needsReview: false
+        }
+      ],
+      message: ''
+    })
+    const { session: s2 } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+    await service.confirmDailyLogSession({ dogId: 'dog-1', userId: 'user-1', sessionId: s2.id })
+
+    const row = dailyCareActions.find(r => r.id === planned.id)!
+    assert.equal(row.actualReps, 12, 'existing actual preserved through a null re-log')
   })
 })
 
