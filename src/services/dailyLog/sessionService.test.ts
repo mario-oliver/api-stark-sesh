@@ -13,12 +13,14 @@
 import { describe, it, before, beforeEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import type { DailyLogExtraction } from './types.js'
+import type { DailyCareActionGroupByOutputType } from '../../generated/models/DailyCareAction.js'
 
 // ── In-memory Prisma fake ─────────────────────────────────────────────────────
 
 type Row = Record<string, unknown>
 const sessions = new Map<string, Row>()
 const observations: Row[] = []
+const dailyCareActions: Row[] = []
 const voiceNotes = new Map<string, Row>()
 let voiceNoteWrites = 0
 let seq = 0
@@ -95,6 +97,14 @@ const fakePrisma = {
       return { ...row }
     }
   },
+  dailyCareAction: {
+    async create({ data }: { data: Row }) {
+      const now = new Date()
+      const row: Row = { id: `dca-${++seq}`, createdAt: now, updatedAt: now, ...data }
+      dailyCareActions.push(row)
+      return { ...row }
+    }
+  },
   // present so an accidental processingStatus write would be observable
   voiceNote: {
     async update({ where, data }: { where: { id: string }; data: Row }) {
@@ -117,6 +127,7 @@ const VOICE_NOTE_ID = '11111111-1111-4111-8111-111111111111'
 
 let nextExtraction: () => Promise<DailyLogExtraction> = async () => ({
   observations: [],
+  adHocActions: [],
   planChangeSuggestions: [],
   message: ''
 })
@@ -152,6 +163,7 @@ before(async () => {
 beforeEach(() => {
   sessions.clear()
   observations.length = 0
+  dailyCareActions.length = 0
   voiceNotes.clear()
   voiceNoteWrites = 0
   nextContext = async () => ({
@@ -184,6 +196,7 @@ describe('DAILY_LOG create — extraction → reviewable draft', () => {
           needsReview: true
         }
       ],
+      adHocActions: [],
       planChangeSuggestions: [],
       message: 'Logged a limp and low energy.'
     })
@@ -221,6 +234,7 @@ describe('DAILY_LOG create — extraction → reviewable draft', () => {
   it('no-care transcript → DRAFT_READY, empty draft, non-empty agent message (not FAILED)', async () => {
     nextExtraction = async () => ({
       observations: [],
+      adHocActions: [],
       planChangeSuggestions: [],
       message: "I didn't catch any care to log."
     })
@@ -291,6 +305,7 @@ describe('DAILY_LOG confirm — selected observations become HealthObservation r
           needsReview: true
         }
       ],
+      adHocActions: [],
       planChangeSuggestions: [],
       message: 'Two observations.'
     })
@@ -341,5 +356,219 @@ describe('DAILY_LOG confirm — selected observations become HealthObservation r
     })
     assert.equal(committed, 2)
     assert.equal(observations.length, 2)
+  })
+})
+
+// ── Ad-hoc DailyCareActions (issue 0012) ──────────────────────────────────────
+// Extraction emits adHocActions[]; confirm commits the selected ones as
+// DailyCareAction(source: LLM_EXTRACTED, careActionId: null, voiceNoteId).
+
+describe('DAILY_LOG create — extraction → adHocActions[] in the draft', () => {
+  it('seeded ad-hoc transcript → DRAFT_READY with the expected adHocActions[] (name/bucket)', async () => {
+    nextExtraction = async () => ({
+      observations: [],
+      adHocActions: [
+        {
+          name: 'surprise 10-minute walk',
+          bucket: 'ACTIVITY',
+          actualReps: null,
+          actualDurationSeconds: 600,
+          extractionConfidence: 0.85,
+          needsReview: false
+        },
+        {
+          name: 'shoulder stretch',
+          bucket: 'MOBILITY',
+          actualReps: 5,
+          actualDurationSeconds: null,
+          extractionConfidence: 0.4,
+          needsReview: true
+        }
+      ],
+      planChangeSuggestions: [],
+      message: 'Logged a walk and a stretch.'
+    })
+
+    const { session, error } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+
+    assert.equal(error, null)
+    assert.equal(session.status, 'DRAFT_READY')
+
+    const draft = session.draft as {
+      adHocActions: Array<{
+        changeId: string
+        name: string
+        bucket: string
+        actualDurationSeconds: number | null
+        actualReps: number | null
+        needsReview: boolean
+      }>
+      observations: unknown[]
+    }
+    assert.equal(draft.adHocActions.length, 2)
+    assert.equal(draft.adHocActions[0].name, 'surprise 10-minute walk')
+    assert.equal(draft.adHocActions[0].bucket, 'ACTIVITY')
+    assert.equal(draft.adHocActions[0].actualDurationSeconds, 600)
+    assert.equal(draft.adHocActions[0].needsReview, false)
+    assert.equal(draft.adHocActions[1].name, 'shoulder stretch')
+    assert.equal(draft.adHocActions[1].bucket, 'MOBILITY')
+    assert.equal(draft.adHocActions[1].actualReps, 5)
+    assert.equal(draft.adHocActions[1].needsReview, true)
+    // each carries a server-assigned changeId
+    assert.ok(draft.adHocActions.every(a => typeof a.changeId === 'string' && a.changeId.length > 0))
+    // observation bucket of the same envelope stays empty here
+    assert.deepEqual(draft.observations, [])
+  })
+})
+
+describe('DAILY_LOG confirm — selected ad-hoc actions become DailyCareAction rows', () => {
+  async function seedAdHocAndObservationDraft() {
+    nextExtraction = async () => ({
+      observations: [
+        {
+          type: 'LIMPING',
+          severity: 'MILD',
+          bodyArea: 'left front leg',
+          note: 'limping on left front leg',
+          extractionConfidence: 0.9,
+          needsReview: false
+        }
+      ],
+      adHocActions: [
+        {
+          name: 'surprise 10-minute walk',
+          bucket: 'ACTIVITY',
+          actualReps: null,
+          actualDurationSeconds: 600,
+          extractionConfidence: 0.85,
+          needsReview: false
+        },
+        {
+          name: 'laser therapy',
+          bucket: 'RECOVERY',
+          actualReps: null,
+          actualDurationSeconds: 300,
+          extractionConfidence: 0.5,
+          needsReview: true
+        }
+      ],
+      planChangeSuggestions: [],
+      message: 'A walk, laser, and a limp.'
+    })
+    const { session } = await service.createDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      voiceNoteId: VOICE_NOTE_ID
+    })
+    return session
+  }
+
+  it('commits selected ad-hoc as LLM_EXTRACTED, careActionId null, voiceNoteId set', async () => {
+    const session = await seedAdHocAndObservationDraft()
+    const draft = session.draft as { adHocActions: Array<{ changeId: string; name: string }> }
+    const chosen = draft.adHocActions[0]
+
+    const { committed } = await service.confirmDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      selectedChangeIds: [chosen.changeId]
+    })
+
+    assert.equal(committed, 1, 'exactly the one selected ad-hoc action is committed')
+    assert.equal(dailyCareActions.length, 1)
+    assert.equal(observations.length, 0, 'no observation was selected')
+    const row = dailyCareActions[0]
+    assert.equal(row.source, 'LLM_EXTRACTED')
+    assert.equal(row.careActionId, null)
+    assert.equal(row.voiceNoteId, VOICE_NOTE_ID)
+    assert.equal(row.dailyCareLogId, 'log-today')
+    assert.equal(row.nameSnapshot, 'surprise 10-minute walk')
+    assert.equal(row.bucket, 'ACTIVITY')
+    assert.equal(row.actualDurationSeconds, 600)
+    assert.equal(row.status, 'COMPLETED')
+    assert.equal(row.completedByUserId, 'user-1')
+    assert.equal(row.needsReview, false)
+
+    const committedSession = await service.getDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id
+    })
+    assert.equal(committedSession?.status, 'COMMITTED')
+  })
+
+  it('multiple ad-hoc rows commit together (careActionId null is not deduped)', async () => {
+    const session = await seedAdHocAndObservationDraft()
+    const draft = session.draft as { adHocActions: Array<{ changeId: string }> }
+
+    const { committed } = await service.confirmDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      selectedChangeIds: draft.adHocActions.map(a => a.changeId)
+    })
+
+    assert.equal(committed, 2)
+    assert.equal(dailyCareActions.length, 2)
+    assert.deepEqual(
+      dailyCareActions.map(r => r.nameSnapshot).sort(),
+      ['laser therapy', 'surprise 10-minute walk']
+    )
+    assert.ok(dailyCareActions.every(r => r.careActionId === null && r.voiceNoteId === VOICE_NOTE_ID))
+  })
+
+  it('mixed selection commits the observation (with voiceNoteId) AND the ad-hoc action', async () => {
+    const session = await seedAdHocAndObservationDraft()
+    const draft = session.draft as {
+      observations: Array<{ changeId: string }>
+      adHocActions: Array<{ changeId: string }>
+    }
+
+    const { committed } = await service.confirmDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id,
+      selectedChangeIds: [draft.observations[0].changeId, draft.adHocActions[0].changeId]
+    })
+
+    assert.equal(committed, 2)
+    // 0011 observation path still commits with voiceNoteId set
+    assert.equal(observations.length, 1)
+    assert.equal(observations[0].voiceNoteId, VOICE_NOTE_ID)
+    // alongside the new ad-hoc DailyCareAction
+    assert.equal(dailyCareActions.length, 1)
+    assert.equal(dailyCareActions[0].voiceNoteId, VOICE_NOTE_ID)
+  })
+
+  it('confirm with no selection commits all observations AND all ad-hoc actions', async () => {
+    const session = await seedAdHocAndObservationDraft()
+    const { committed } = await service.confirmDailyLogSession({
+      dogId: 'dog-1',
+      userId: 'user-1',
+      sessionId: session.id
+    })
+    assert.equal(committed, 3, '1 observation + 2 ad-hoc actions')
+    assert.equal(observations.length, 1)
+    assert.equal(dailyCareActions.length, 2)
+  })
+})
+
+// ── Migration proof: voiceNoteId on the generated DailyCareAction client ───────
+// Type-level assertion, enforced by `tsc --noEmit` / `npm run build`: the additive
+// migration's column is present on the generated client. `DailyCareActionGroupByOutputType`
+// is red (→ `never`, unassignable) before `prisma generate`, green after (see
+// [[api-stark-sesh-prisma-field-removal-proof]] — the inverse, presence not absence).
+type _DcaHasVoiceNoteId =
+  'voiceNoteId' extends keyof DailyCareActionGroupByOutputType ? true : never
+const _dcaVoiceNoteIdProof: _DcaHasVoiceNoteId = true
+
+describe('migration — DailyCareAction.voiceNoteId on the generated client', () => {
+  it('voiceNoteId is a key of the generated DailyCareAction type', () => {
+    assert.equal(_dcaVoiceNoteIdProof, true)
   })
 })
