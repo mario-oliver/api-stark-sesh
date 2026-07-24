@@ -118,6 +118,19 @@ const careActionFrequencySchema = z.enum(['DAILY', 'EVERY_OTHER_DAY', 'WEEKLY', 
 
 const careActionTimeOfDaySchema = z.enum(['MORNING', 'EVENING', 'ANYTIME'])
 
+// Tier = execution context (ADR-0004); bucket stays the one required taxonomy.
+const careActionTierSchema = z.enum(['CORE', 'ROUTINE', 'ON_WALKS', 'AS_NEEDED'])
+
+// Vicky dosage fields (issue 0020) — all optional/nullable on create and update.
+const careActionTierDosageFields = {
+  tier: careActionTierSchema.optional().nullable(),
+  daysPerWeek: z.coerce.number().int().min(1).max(7).optional().nullable(),
+  targetHoldSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  targetSets: z.coerce.number().int().min(0).max(999).optional().nullable(),
+  restBetweenSetsSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  referenceUrl: z.string().trim().url().max(2048).optional().nullable()
+}
+
 export const updateCarePlanSchema = z.object({
   name: z.string().trim().min(1).max(200)
 })
@@ -130,6 +143,7 @@ export const createCareActionSchema = z.object({
   timeOfDay: careActionTimeOfDaySchema.optional().nullable(),
   targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
   targetDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  ...careActionTierDosageFields,
   instructions: z.string().trim().max(2000).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).optional()
 })
@@ -142,6 +156,7 @@ export const updateCareActionSchema = z.object({
   timeOfDay: careActionTimeOfDaySchema.optional().nullable(),
   targetReps: z.coerce.number().int().min(0).max(999).optional().nullable(),
   targetDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  ...careActionTierDosageFields,
   instructions: z.string().trim().max(2000).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).optional()
 })

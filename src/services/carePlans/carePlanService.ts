@@ -1,8 +1,13 @@
 import { prisma } from '../../lib/prisma.js'
 import { actionAppliesOnDate } from '../dailyCare/actionAppliesOnDate.js'
 import { formatCalendarDate, parseCalendarDate } from '../dailyCare/dateUtils.js'
+import {
+  careActionTierDosageSelect,
+  tierDosageFromCareAction
+} from '../dailyCare/serializeDailyCare.js'
 import type {
   CareActionFrequency,
+  CareActionTier,
   CareActionTimeOfDay,
   CareBucket
 } from '../../generated/client.js'
@@ -15,6 +20,12 @@ export type CreateCareActionInput = {
   timeOfDay?: CareActionTimeOfDay | null
   targetReps?: number | null
   targetDurationSeconds?: number | null
+  tier?: CareActionTier | null
+  daysPerWeek?: number | null
+  targetHoldSeconds?: number | null
+  targetSets?: number | null
+  restBetweenSetsSeconds?: number | null
+  referenceUrl?: string | null
   instructions?: string | null
   sortOrder?: number
 }
@@ -31,6 +42,12 @@ type CareActionRow = {
   timeOfDay: CareActionTimeOfDay | null
   targetReps: number | null
   targetDurationSeconds: number | null
+  tier: CareActionTier | null
+  daysPerWeek: number | null
+  targetHoldSeconds: number | null
+  targetSets: number | null
+  restBetweenSetsSeconds: number | null
+  referenceUrl: string | null
   instructions: string | null
   sortOrder: number
   isActive: boolean
@@ -49,6 +66,12 @@ function serializeCareAction(action: CareActionRow) {
     timeOfDay: action.timeOfDay,
     targetReps: action.targetReps,
     targetDurationSeconds: action.targetDurationSeconds,
+    tier: action.tier,
+    daysPerWeek: action.daysPerWeek,
+    targetHoldSeconds: action.targetHoldSeconds,
+    targetSets: action.targetSets,
+    restBetweenSetsSeconds: action.restBetweenSetsSeconds,
+    referenceUrl: action.referenceUrl,
     instructions: action.instructions,
     sortOrder: action.sortOrder,
     isActive: action.isActive,
@@ -134,6 +157,12 @@ export async function createCareAction(dogId: string, input: CreateCareActionInp
       timeOfDay: input.timeOfDay ?? null,
       targetReps: input.targetReps ?? null,
       targetDurationSeconds: input.targetDurationSeconds ?? null,
+      tier: input.tier ?? null,
+      daysPerWeek: input.daysPerWeek ?? null,
+      targetHoldSeconds: input.targetHoldSeconds ?? null,
+      targetSets: input.targetSets ?? null,
+      restBetweenSetsSeconds: input.restBetweenSetsSeconds ?? null,
+      referenceUrl: input.referenceUrl ?? null,
       instructions: input.instructions ?? null,
       sortOrder
     }
@@ -170,6 +199,16 @@ export async function updateCareAction(
       ...(input.targetDurationSeconds !== undefined && {
         targetDurationSeconds: input.targetDurationSeconds
       }),
+      ...(input.tier !== undefined && { tier: input.tier }),
+      ...(input.daysPerWeek !== undefined && { daysPerWeek: input.daysPerWeek }),
+      ...(input.targetHoldSeconds !== undefined && {
+        targetHoldSeconds: input.targetHoldSeconds
+      }),
+      ...(input.targetSets !== undefined && { targetSets: input.targetSets }),
+      ...(input.restBetweenSetsSeconds !== undefined && {
+        restBetweenSetsSeconds: input.restBetweenSetsSeconds
+      }),
+      ...(input.referenceUrl !== undefined && { referenceUrl: input.referenceUrl }),
       ...(input.instructions !== undefined && { instructions: input.instructions }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder })
     }
@@ -226,7 +265,14 @@ export async function getCalendarSummary(dogId: string, month: string) {
       date: { gte: startDate, lte: endDate }
     },
     include: {
-      dailyCareActions: { select: { status: true } }
+      dailyCareActions: {
+        select: {
+          careActionId: true,
+          status: true,
+          // Tier + dosage via the CareAction join (0020) — null for ad-hoc rows.
+          careAction: { select: careActionTierDosageSelect }
+        }
+      }
     }
   })
 
@@ -234,11 +280,17 @@ export async function getCalendarSummary(dogId: string, month: string) {
     logs.map(log => [formatCalendarDate(log.date), log])
   )
 
+  type CalendarActionRow = {
+    careActionId: string | null
+    status: string
+  } & ReturnType<typeof tierDosageFromCareAction>
+
   const days: Array<{
     date: string
     completedCount: number
     totalActions: number
     hasLog: boolean
+    actions: CalendarActionRow[]
   }> = []
 
   const daysInMonth = endDate.getUTCDate()
@@ -255,7 +307,12 @@ export async function getCalendarSummary(dogId: string, month: string) {
         date: dateStr,
         completedCount,
         totalActions: log.dailyCareActions.length,
-        hasLog: true
+        hasLog: true,
+        actions: log.dailyCareActions.map(a => ({
+          careActionId: a.careActionId,
+          status: a.status,
+          ...tierDosageFromCareAction(a.careAction)
+        }))
       })
     } else if (plan) {
       const expectedTotal = plan.actions.filter(a =>
@@ -265,14 +322,16 @@ export async function getCalendarSummary(dogId: string, month: string) {
         date: dateStr,
         completedCount: 0,
         totalActions: expectedTotal,
-        hasLog: false
+        hasLog: false,
+        actions: []
       })
     } else {
       days.push({
         date: dateStr,
         completedCount: 0,
         totalActions: 0,
-        hasLog: false
+        hasLog: false,
+        actions: []
       })
     }
   }

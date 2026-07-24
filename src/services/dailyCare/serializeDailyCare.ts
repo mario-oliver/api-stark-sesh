@@ -1,5 +1,42 @@
 const userSelect = { id: true, email: true, firstName: true, lastName: true } as const
 
+/**
+ * Tier + Vicky dosage fields (issue 0020). Daily rows read these from the
+ * LINKED CareAction via the relation join — DailyCareAction carries no snapshot
+ * of them (PRD: DailyCareAction unchanged). Ad-hoc rows have no linked action,
+ * so every field serializes null.
+ */
+export const careActionTierDosageSelect = {
+  tier: true,
+  daysPerWeek: true,
+  targetHoldSeconds: true,
+  targetSets: true,
+  restBetweenSetsSeconds: true,
+  referenceUrl: true
+} as const
+
+export type CareActionTierDosage = {
+  tier: string | null
+  daysPerWeek: number | null
+  targetHoldSeconds: number | null
+  targetSets: number | null
+  restBetweenSetsSeconds: number | null
+  referenceUrl: string | null
+}
+
+export function tierDosageFromCareAction(
+  careAction: Partial<CareActionTierDosage> | null | undefined
+): CareActionTierDosage {
+  return {
+    tier: careAction?.tier ?? null,
+    daysPerWeek: careAction?.daysPerWeek ?? null,
+    targetHoldSeconds: careAction?.targetHoldSeconds ?? null,
+    targetSets: careAction?.targetSets ?? null,
+    restBetweenSetsSeconds: careAction?.restBetweenSetsSeconds ?? null,
+    referenceUrl: careAction?.referenceUrl ?? null
+  }
+}
+
 export type DailyCareActionWithRelations = {
   id: string
   dailyCareLogId: string
@@ -35,10 +72,10 @@ export type DailyCareActionWithRelations = {
     id: string
     nameSnapshot: string
   } | null
-  careAction?: {
+  careAction?: ({
     targetReps: number | null
     targetDurationSeconds: number | null
-  } | null
+  } & Partial<CareActionTierDosage>) | null
 }
 
 function resolveTargetReps(
@@ -77,6 +114,8 @@ export async function serializeDailyCareAction(action: DailyCareActionWithRelati
       action.careAction?.targetDurationSeconds
     ),
     actualDurationSeconds: action.actualDurationSeconds,
+    // Tier + dosage come from the linked CareAction (join), null for ad-hoc rows.
+    ...tierDosageFromCareAction(action.careAction),
     substitutedForTaskId: action.substitutedForTaskId,
     substitutedFor: action.substitutedFor ?? null,
     metadata: action.metadata,

@@ -4,6 +4,7 @@ import { formatCalendarDate, parseCalendarDate } from './dateUtils.js'
 import { serializeDog } from '../../lib/serializeDog.js'
 import {
   bucketProgress,
+  careActionTierDosageSelect,
   parseBucketScores,
   serializeDailyCareAction,
   serializeObservation
@@ -14,7 +15,9 @@ const dailyActionInclude = {
   orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
   include: {
     completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-    careAction: { select: { targetReps: true, targetDurationSeconds: true } },
+    careAction: {
+      select: { targetReps: true, targetDurationSeconds: true, ...careActionTierDosageSelect }
+    },
     substitutedFor: { select: { id: true, nameSnapshot: true } }
   }
 }
