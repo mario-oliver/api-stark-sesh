@@ -56,11 +56,18 @@ don't touch.
 - No separate iOS prototypes — the design source is the 0024 choice.
 
 ## Acceptance criteria
-- [ ] (machine) `isWorkoutDay` / `workoutsThisWeek` fixtures pass (mirroring the
-      web tests' semantics).
-- [ ] (machine) Stepper view-model drives mocked client with correct
-      status/tolerance/actuals per step; finish reachable with skips.
-- [ ] (machine) iOS gate green.
+- [x] (machine) `isWorkoutDay` / `workoutsThisWeek` fixtures pass (mirroring the
+      web tests' semantics). — `WorkoutModelsTests` (14): partial counts, skip
+      breaks the day, zero-CORE false, non-CORE ignored, Mon–Sun window across the
+      Jan/Feb month boundary, full/partial/absent-field decoding of the
+      history/calendar row arrays.
+- [x] (machine) Stepper view-model drives mocked client with correct
+      status/tolerance/actuals per step; finish reachable with skips. —
+      `WorkoutViewModelTests` (7): `MockWorkoutAPI` asserts exact
+      `UpdateDailyCareActionBody` per step (COMPLETED / PARTIALLY_COMPLETED /
+      SKIPPED, tolerance, actuals); expand→complete→auto-advance→finish with a skip.
+- [x] (machine) iOS gate green. — `xcodebuild test … -only-testing:StarkHealthiOSTests`:
+      **TEST SUCCEEDED**, Executed 38 tests, 0 failures (2026-07-23).
 - [ ] (trust-prior-verify) Flow reads as the chosen 0024 direction, feels
       iOS-native, one-handed usable; voice close is one continuous motion.
 
@@ -72,7 +79,7 @@ xcodebuild test -project StarkHealthiOS.xcodeproj -scheme StarkHealthiOS \
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`6ed2d4c262c85089a7c464f1a45bc2cad14eae55` (epic/stark-plan-workout, 2026-07-23)
 
 ## Notes for agent
 - Read the 0024 issue file first — the chosen design is recorded there.

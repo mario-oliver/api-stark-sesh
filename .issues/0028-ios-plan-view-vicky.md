@@ -42,12 +42,27 @@ Sibling of web issue 0023.
 - No editing of tier/dosage fields on iOS.
 
 ## Acceptance criteria
-- [ ] (machine) Decoding tests pass for full, partial, and null-field payloads.
-- [ ] (machine) Grouping util: PRD fixture rows land in the right sections;
-      null-tier plan renders via the existing path.
-- [ ] (machine) Dosage formatter matches the PRD rows (e.g. Ground Poles →
-      "2 sets × 6, rest 2 min, 3 d/wk").
-- [ ] (machine) iOS gate green.
+- [x] (machine) Decoding tests pass for full, partial, and null-field payloads. ✅
+      `ContractDecodingTests` +4 cases: `decodesFullTierAndDosageFields` (all six,
+      Ground Poles shape), `decodesPartialTierFields_referenceUrlOnly` (Stairs Hip
+      Stretch), `decodesLegacyPayload_withoutNewFields` (pre-0020, all nil),
+      `toleratesExplicitNullAndUnknownTier` (null + `SUPER_CORE` → nil, no throw).
+      `CareActionRecord` custom decoder decodes the six keys verbatim; `tier` via
+      `CareActionTier(wireValue:)`.
+- [x] (machine) Grouping util: PRD fixture rows land in the right sections;
+      null-tier plan renders via the existing path. ✅
+      `PlanTierGrouping.sections`/`isTiered` — `testGrouping_sectionsInPrescriptionOrder`
+      (out-of-order input → CORE→ROUTINE→ON_WALKS→AS_NEEDED), `emitsOnlyNonEmptyTierSections`,
+      `nilTierPlan_fallsBack` (isTiered false, sections empty → ExercisesView bucket path).
+- [x] (machine) Dosage formatter matches the PRD rows (e.g. Ground Poles →
+      "2 sets × 6, rest 2 min, 3 d/wk"). ✅
+      `CareDisplay.dosageLine` — Ground Poles → "2 sets × 6, rest 2 min, 3 d/wk";
+      Step Up (reps 5, hold 3, 3 d/wk) → "5 reps, hold 3s, 3 d/wk"; ROM (reps 15, 7 d/wk)
+      → "15 reps, 7 d/wk"; Stairs Hip Stretch (referenceUrl only) → nil.
+- [x] (machine) iOS gate green. ✅
+      `** TEST SUCCEEDED **` — locked xcodebuild (iPhone 17, OS 26.2),
+      `-only-testing:StarkHealthiOSTests`, 31/31 pass (13 new this issue). No existing
+      test modified or weakened.
 - [ ] (trust-prior-verify) Plan page reads like Vicky's plan on a device.
 
 ## Feedback Loops
@@ -58,7 +73,7 @@ xcodebuild test -project StarkHealthiOS.xcodeproj -scheme StarkHealthiOS \
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`6ed2d4c262c85089a7c464f1a45bc2cad14eae55` (epic/stark-plan-workout @ StarkHealthiOS worktree preflight, 2026-07-23)
 
 ## Notes for agent
 - Keep decoded field names verbatim from the 0020 serializer shape — test

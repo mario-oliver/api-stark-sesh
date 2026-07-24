@@ -56,14 +56,24 @@ decisions; ADR-0004 §4, §6.
   bucket pages; AS_NEEDED stays ad-hoc-loggable via the existing path).
 
 ## Acceptance criteria
-- [ ] (machine) `isWorkoutDay`: true only when every CORE row of the day is
+- [x] (machine) `isWorkoutDay`: true only when every CORE row of the day is
       COMPLETED/PARTIALLY_COMPLETED; days with zero CORE rows are false.
-- [ ] (machine) `workoutsThisWeek`: Mon–Sun window proven across a month
+      → `lib/care/workout.ts`; `lib/care/workout.test.ts` (PARTIALLY counts,
+      SKIPPED/PENDING/UNCLEAR fail, zero-CORE + non-CORE-only days false).
+- [x] (machine) `workoutsThisWeek`: Mon–Sun window proven across a month
       boundary; counter matches fixture histories.
-- [ ] (machine) Stepper drives the mocked update client with correct
+      → `weekRange`/`workoutsThisWeek`/`monthsForWeek` in `lib/care/workout.ts`;
+      tests cover Mon/Sun edges, Jul→Aug and Dec→Jan boundaries, and 0/in-range/>4
+      display states (`workoutWeekStatus`/`workoutWeekLabel`).
+- [x] (machine) Stepper drives the mocked update client with correct
       status/tolerance/actuals payloads per step; finish state reached with
       skips present.
-- [ ] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build` pass.
+      → `lib/care/workoutFlow.ts` reducer + `buildStepUpdate`/`writeStepResult`;
+      `lib/care/workoutFlow.test.ts` (expand→complete→auto-advance→finish with
+      skips; vi.fn client asserted COMPLETED{tolerance,actuals}/SKIPPED/no-write).
+- [x] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build` pass.
+      → 54 tests pass (6 files); tsc exit 0; scoped eslint exit 0; build ✓,
+      `/dogs/[dogId]/workout` route emitted, `/dev/workout-proto` removed.
 - [ ] (trust-prior-verify) Flow matches the 0024-chosen design on a phone; the
       voice close feels like one continuous motion.
 
@@ -78,7 +88,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`ed4f8b068ec5a4592f680304b04081827ffbf9c6`
 
 ## Notes for agent
 - **Design constraints:** `stark-sesh/design-system/stark-sesh/pages/workout.md`

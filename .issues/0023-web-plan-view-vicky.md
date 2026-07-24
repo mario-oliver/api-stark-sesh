@@ -46,13 +46,24 @@ video where one exists.
 - No Today/Workout changes (0025), no video (0026), no API changes.
 
 ## Acceptance criteria
-- [ ] (machine) Grouping util: tiered actions land in the right section, ordered
+- [x] (machine) Grouping util: tiered actions land in the right section, ordered
       CORE → ROUTINE → ON_WALKS → AS_NEEDED; null-tier plans render exactly as
       today (regression case).
-- [ ] (machine) Dosage formatter renders each PRD row correctly (e.g. Ground
+      Evidence: `groupActionsByTier` in `lib/care/display.ts`; tests in
+      `lib/care/planView.test.ts` (`describe('groupActionsByTier')`) assert order,
+      per-section membership, empty-tier omission, null-tier → empty groups
+      (fallback), and orphan null-tier action routed to `untiered`.
+- [x] (machine) Dosage formatter renders each PRD row correctly (e.g. Ground
       Poles → "2 sets × 6, rest 2 min, 3 d/wk"; holds render as seconds).
-- [ ] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build`
+      Evidence: `formatDosage` in `lib/care/display.ts`; tests in
+      `lib/care/planView.test.ts` (`describe('formatDosage')`): Ground Poles →
+      "2 sets × 6, rest 2 min, 3 d/wk"; Step Up/Head Stretch → "5 reps, hold 3s,
+      3 d/wk"; ROM → "15 reps, 7 d/wk"; Stairs Hip Stretch (referenceUrl only) → "".
+- [x] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build`
       all pass.
+      Evidence: `npm test` → 5 files, 24 passed (14 baseline + 10 new);
+      `npx tsc --noEmit` → exit 0; scoped `eslint` on the 7 changed TS/TSX files
+      → exit 0; `npm run build` → "Compiled successfully".
 - [ ] (trust-prior-verify) The plan page reads like Vicky's plan on a phone.
 
 ## Feedback Loops
@@ -66,7 +77,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`ed4f8b068ec5a4592f680304b04081827ffbf9c6`
 
 ## Notes for agent
 - Keep field names verbatim from the Contract — the web/api bucket drift bit

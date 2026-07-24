@@ -50,12 +50,26 @@ Sibling of web issue 0026.
 - No API changes (0022 owns the surface); no voice changes.
 
 ## Acceptance criteria
-- [ ] (machine) Register payload carries `dailyCareActionId` from a workout step
+- [x] (machine) Register payload carries `dailyCareActionId` from a workout step
       and omits it for standalone; round-trip against the mocked contract.
-- [ ] (machine) Upload state machine: denied permission, failed PUT (retry),
+      Evidence: `VideoClipClientTests.testRegisterLinked_encodesActionId_andDecodesClip`
+      (asserts the encoded JSON contains `dailyCareActionId`) +
+      `testRegisterStandalone_omitsActionId` (asserts the key is absent);
+      `VideoCaptureStateMachineTests.testLinkedUpload_success_registersWithActionId` /
+      `testStandaloneUpload_success_registersWithoutActionId`.
+- [x] (machine) Upload state machine: denied permission, failed PUT (retry),
       success → registered; no orphan states.
-- [ ] (machine) Day payload clip decoding; delete calls the contract route.
-- [ ] (machine) iOS gate green.
+      Evidence: `VideoCaptureStateMachineTests` — `testPermissionDenied_isTerminal_andMakesNoNetworkCall`,
+      `testFailedPUT_thenRetry_reachesRegistered_noOrphan` (re-presigns on retry,
+      registers exactly once), `testPresignFailure_isRetryable_andRegistersNothing`,
+      `testOversizeFile_failsBeforePresign`.
+- [x] (machine) Day payload clip decoding; delete calls the contract route.
+      Evidence: `VideoClipDecodingTests` (today `dailyLog.videoClips` present/absent,
+      history `videoClips` + `videoClipCount` present/absent, `VideoClip` shape) +
+      `VideoClipClientTests.testDelete_callsContractRoute` (DELETE
+      `/v1/dogs/:id/video-clips/:clipId`).
+- [x] (machine) iOS gate green. Evidence: `xcodebuild test` → **TEST SUCCEEDED**,
+      67 passed / 0 failed (baseline 50 + 17 new video tests); no existing tests weakened.
 - [ ] (trust-prior-verify) Filming an exercise mid-workout is one-handed doable;
       playback, save-to-Photos, and share sheet work on a device.
 
@@ -67,7 +81,7 @@ xcodebuild test -project StarkHealthiOS.xcodeproj -scheme StarkHealthiOS \
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`b6df7edd379e81a17b0524b8f608fc2134fff3c6`
 
 ## Notes for agent
 - Add `NSCameraUsageDescription` / `NSMicrophoneUsageDescription` /

@@ -53,13 +53,22 @@ decisions; Non-goals (no share link — download only).
 - No changes to voice capture.
 
 ## Acceptance criteria
-- [ ] (machine) Client round-trip: presign → PUT (mocked) → register payload
+- [x] (machine) Client round-trip: presign → PUT (mocked) → register payload
       carries `dailyCareActionId` inside a workout step and omits it standalone.
-- [ ] (machine) Capture state machine handles denied permissions, failed PUT
-      (retry), and successful register; no orphan UI state.
-- [ ] (machine) Day panel renders clips from a mocked day payload; delete calls
-      the contract route.
-- [ ] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build` pass.
+      Evidence: `lib/video/upload.test.ts` (`uploadAndRegisterClip` presign→PUT→
+      register; asserts `dailyCareActionId` present with a step id and absent
+      standalone) + `lib/api/videoClips.test.ts` (routes verbatim).
+- [x] (machine) Capture state machine handles denied permissions, failed PUT
+      (retry), and successful register; no orphan UI state. Evidence:
+      `lib/video/captureMachine.test.ts` (denied→retry, error keeps blob→retry→
+      uploaded, guard tests reject impossible transitions).
+- [x] (machine) Day panel renders clips from a mocked day payload; delete calls
+      the contract route. Evidence: `lib/api/videoClips.test.ts`
+      (`clipsFromToday` reads embedded clips from a mocked `TodayPayload`; delete
+      hits `DELETE /v1/dogs/:id/video-clips/:clipId`).
+- [x] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build` pass.
+      Evidence: 90 tests pass (64 baseline + 26 new); tsc clean; scoped eslint
+      clean; build OK.
 - [ ] (trust-prior-verify) Recording mid-workout is one-handed doable; playback
       and download work on a phone (Mario tries it).
 
@@ -74,7 +83,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`ad27881f6970c0e5f85e949218b026d67fe89059`
 
 ## Notes for agent
 - Audio capture precedent: `components/voice/VoiceRecordBar.tsx` +
