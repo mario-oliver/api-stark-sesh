@@ -32,8 +32,10 @@ export function serializeVideoClip(clip: VideoClipRow) {
   }
 }
 
-export function serializeVideoClips(clips: VideoClipRow[]) {
-  return clips.map(serializeVideoClip)
+export function serializeVideoClips(clips: VideoClipRow[] | null | undefined) {
+  // Tolerate a missing include: callers embed clips wherever a DailyCareLog is
+  // loaded, and not every query (or test fake) selects the relation.
+  return (clips ?? []).map(serializeVideoClip)
 }
 
 /**

@@ -30,7 +30,7 @@ Data/schema decisions (Migration 1). ADR-0004.
 
 ## Dependencies
 - Blocked by: —
-- Blocks: 0021, 0023, 0025
+- Blocks: 0021, 0023, 0025, 0028, 0029
 
 ## Scope
 - Prisma migration: `CareActionTier` enum + the six nullable columns on

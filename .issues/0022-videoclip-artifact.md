@@ -34,7 +34,7 @@ multipart path — presigned PUT only.
 
 ## Dependencies
 - Blocked by: —
-- Blocks: 0026
+- Blocks: 0026, 0030
 
 ## Scope
 - Prisma migration: `VideoClip` model + relations (`Dog`, `DailyCareLog`,
@@ -87,7 +87,12 @@ multipart path — presigned PUT only.
       exit 0, `npm run lint` 0 errors (1 pre-existing warning in
       `src/types/index.ts`, untouched), `npm run build` exit 0
       (prisma generate + tsc; regenerated `src/generated` committed).
-- [~] (deferred) Migration applied to a database.
+- [x] (machine) Migration applied to a database. ✅ RESOLVED at epic merge
+      2026-07-23: renamed to `20260724120000_videoclip` (to sort after 0020's
+      applied migration), `npx prisma migrate deploy` applied it to the dev DB,
+      and `prisma migrate diff --from-config-datasource --exit-code` → no
+      drift, exit 0. Original deferral record kept below.
+- [~] (superseded — original deferral) Migration applied to a database.
       → `prisma/migrations/20260723120000_videoclip/migration.sql` was
       hand-written (the worktree's `.env` symlinks to the shared dev DB, whose
       apply rights another agent owns — `migrate dev --create-only` would have

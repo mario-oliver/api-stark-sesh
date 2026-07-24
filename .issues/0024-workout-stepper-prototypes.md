@@ -30,7 +30,7 @@ used one-handed next to a Great Dane.
 
 ## Dependencies
 - Blocked by: —
-- Blocks: 0025
+- Blocks: 0025, 0029
 
 ## Scope
 - `app/dev/workout-proto/` route (pattern of `app/dev/daily-log-proto/`):
@@ -47,7 +47,7 @@ used one-handed next to a Great Dane.
 - The chosen design's real build is 0025; deleting the throwaways happens there.
 
 ## Acceptance criteria
-- [ ] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build` pass
+- [x] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build` pass
       (dev route compiles; no test regressions).
 - [ ] (trust-prior-verify) Mario walks all three on a phone-sized viewport and
       picks one (or a combination) — the choice recorded in this issue file.
@@ -63,7 +63,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`6723bb3c94285afbdc791029245680727973bdd2`
 
 ## Notes for agent
 - **Design constraints (read first):** `stark-sesh/design-system/stark-sesh/pages/workout.md`
