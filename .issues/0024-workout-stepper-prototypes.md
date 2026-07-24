@@ -58,6 +58,10 @@ used one-handed next to a Great Dane.
       Nunito Sans). Per design-system rule, palette/type adoption is app-wide
       via tokens — applied by 0025, never workout-only. 0029 adapts B
       SwiftUI-native.
+      ⚠️ AMENDED 2026-07-24 (Mario): the ORANGE PALETTE IS REJECTED — colors
+      revert to the app's original blue (#1b69a1) + light-blue accents,
+      app-wide (web tokens + iOS BrandColors). Variant B layout and the
+      Varela Round / Nunito Sans typography adoption stand.
 
 ## Feedback Loops
 ```bash
