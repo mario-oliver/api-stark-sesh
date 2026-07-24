@@ -5,7 +5,10 @@ import { assertDogMemberAccess } from '../lib/dogAccess.js'
 import type { AuthenticatedRequest } from '../types/auth.js'
 import { loadTodayPayload } from '../services/dailyCare/resolveTodayLog.js'
 import { todayUtcDateString, parseCalendarDate } from '../services/dailyCare/dateUtils.js'
-import { serializeDailyCareAction } from '../services/dailyCare/serializeDailyCare.js'
+import {
+  careActionTierDosageSelect,
+  serializeDailyCareAction
+} from '../services/dailyCare/serializeDailyCare.js'
 import {
   createAdHocDailyCareAction,
   reviewDailyCareAction,
@@ -59,7 +62,9 @@ export class DailyCareController {
       },
       include: {
         completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-        careAction: { select: { targetReps: true, targetDurationSeconds: true } }
+        careAction: {
+          select: { targetReps: true, targetDurationSeconds: true, ...careActionTierDosageSelect }
+        }
       }
     })
 

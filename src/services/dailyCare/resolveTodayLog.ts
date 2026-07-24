@@ -4,17 +4,21 @@ import { formatCalendarDate, parseCalendarDate } from './dateUtils.js'
 import { serializeDog } from '../../lib/serializeDog.js'
 import {
   bucketProgress,
+  careActionTierDosageSelect,
   parseBucketScores,
   serializeDailyCareAction,
   serializeObservation
 } from './serializeDailyCare.js'
+import { serializeVideoClips } from '../videoClips/videoClipService.js'
 import type { CareBucket } from '../../generated/client.js'
 
 const dailyActionInclude = {
   orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
   include: {
     completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-    careAction: { select: { targetReps: true, targetDurationSeconds: true } },
+    careAction: {
+      select: { targetReps: true, targetDurationSeconds: true, ...careActionTierDosageSelect }
+    },
     substitutedFor: { select: { id: true, nameSnapshot: true } }
   }
 }
@@ -112,6 +116,9 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
         include: {
           user: { select: { id: true, email: true, firstName: true, lastName: true } }
         }
+      },
+      videoClips: {
+        orderBy: { createdAt: 'desc' }
       }
     }
   })
@@ -119,6 +126,7 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
   const dog = await serializeDog(await prisma.dog.findUniqueOrThrow({ where: { id: dogId } }))
   const dailyCareActions = await Promise.all(log.dailyCareActions.map(serializeDailyCareAction))
   const observations = log.healthObservations.map(serializeObservation)
+  const videoClips = serializeVideoClips(log.videoClips)
 
   const activityActions = dailyCareActions.filter(a => a.bucket === 'ACTIVITY')
   const mobilityActions = dailyCareActions.filter(a => a.bucket === 'MOBILITY')
@@ -147,7 +155,8 @@ export async function loadTodayPayload(dogId: string, dailyCareLogId: string) {
       latestVoiceNoteAt: latestVoiceNote?.createdAt.toISOString() ?? null,
       dailyCareActions,
       voiceNotes,
-      healthObservations: observations
+      healthObservations: observations,
+      videoClips
     },
     buckets: {
       activity: {

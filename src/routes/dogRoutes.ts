@@ -40,6 +40,7 @@ import {
 } from '../schemas/careAgentSchemas.js'
 import { createSpriteSessionSchema } from '../schemas/spriteGenSchemas.js'
 import { SpriteGenController } from '../controllers/spriteGenController.js'
+import videoClipRoutes from './videoClipRoutes.js'
 
 export default async function dogRoutes(
   fastify: FastifyInstance,
@@ -269,4 +270,7 @@ export default async function dogRoutes(
     handler: async (request, reply) =>
       spriteGen.streamFrame(request as AuthenticatedRequest, reply)
   })
+
+  // ── Video Clips (issue 0022 — dumb artifact, frozen contract) ───────────────
+  await videoClipRoutes(fastify, {})
 }

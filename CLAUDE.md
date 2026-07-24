@@ -5,9 +5,9 @@
 The source of truth for this project's domain language and architectural decisions
 lives in the Jarvis vault (external to this repo):
 
-- **context.md** (ubiquitous language): `/Users/mariooliver/Documents/Obsidian Vault/Jarvis/Projects/Stark Health_A/` — created during the first grill-with-docs session.
-- **ADRs**: `/Users/mariooliver/Documents/Obsidian Vault/Jarvis/Decisions_A/Engineering/`
-- **Workflow philosophy**: `/Users/mariooliver/Documents/Obsidian Vault/Jarvis/Reference/Philosophy/AI_Coding_Workflow_Philosophy.md`
+- **context.md** (ubiquitous language): `/Users/mariooliver/Documents/Jarvis/Projects/Stark Health/Engineering/context.md` — created during the first grill-with-docs session.
+- **ADRs**: `/Users/mariooliver/Documents/Jarvis/Projects/Stark Health/Decisions/`
+- **Workflow philosophy**: `/Users/mariooliver/Documents/Jarvis/Reference/Philosophy/AI_Coding_Workflow_Philosophy.md`
 
 **Before planning or coding any feature:**
 1. Read `context.md`. Use its language verbatim in code, types, routes, tests, and OpenAPI/schema names. The same word must mean the same thing everywhere.
@@ -37,8 +37,8 @@ npm run build       # npm run db:generate && tsc (includes prisma generate — n
 
 Agent-behavior tests (Program Audit Agent / Exercise Agent) assert schema structure and contract, NOT exact LLM wording — wording is non-deterministic and a brittle gate.
 
-See full gate reference: `/Users/mariooliver/Documents/Obsidian Vault/Jarvis/Skills_A/workflow/inner-loop/references/test-gates.md`
+See full gate reference: `/Users/mariooliver/.claude/skills/inner-loop/references/test-gates.md`
 
 ## Graduation status
 
-Supervised until the per-repo streak in the graduation tracker warrants human judgment to flip. See: `/Users/mariooliver/Documents/Obsidian Vault/Jarvis/Projects/Stark Health_A/Engineering/inner-loop-graduation-tracker.md`
+Autonomous by default (2026-07 workflow change; the graduation tracker is retired).

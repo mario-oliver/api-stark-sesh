@@ -22,6 +22,15 @@ enum CareActionTimeOfDay {
   ANYTIME
 }
 
+// Execution context under Vicky's plan (ADR-0004) — NOT a second taxonomy;
+// `bucket` (CareBucket) stays the one taxonomy of what an action IS.
+enum CareActionTier {
+  CORE
+  ROUTINE
+  ON_WALKS
+  AS_NEEDED
+}
+
 enum DailyCareActionStatus {
   PENDING
   COMPLETED
@@ -132,6 +141,7 @@ model User {
   completedDailyActions      DailyCareAction[]      @relation("DailyCareActionCompletedBy")
   voiceNotes                 VoiceNote[]
   healthObservations         HealthObservation[]
+  videoClips                 VideoClip[]
 
   @@index([id])
   @@index([email])
@@ -181,6 +191,7 @@ model Dog {
   careAgentSessions         CareAgentSession[]
   spriteSets                SpriteSet[]
   spriteGenerationSessions  SpriteGenerationSession[]
+  videoClips                VideoClip[]
 
   @@index([name])
 }
@@ -226,6 +237,12 @@ model CareAction {
   timeOfDay              CareActionTimeOfDay?
   targetReps             Int?
   targetDurationSeconds  Int?
+  tier                   CareActionTier?
+  daysPerWeek            Int?
+  targetHoldSeconds      Int?
+  targetSets             Int?
+  restBetweenSetsSeconds Int?
+  referenceUrl           String?
   instructions           String?
   sortOrder              Int                 @default(0)
   isActive               Boolean             @default(true)
@@ -255,6 +272,7 @@ model DailyCareLog {
   dailyCareActions   DailyCareAction[]
   voiceNotes         VoiceNote[]
   healthObservations HealthObservation[]
+  videoClips         VideoClip[]
 
   @@unique([dogId, date])
   @@index([dogId])
@@ -300,6 +318,7 @@ model DailyCareAction {
   completedBy    User?             @relation("DailyCareActionCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
   substitutedFor DailyCareAction?  @relation("ActionSubstitution", fields: [substitutedForTaskId], references: [id], onDelete: SetNull)
   substitutions  DailyCareAction[] @relation("ActionSubstitution")
+  videoClips     VideoClip[]
 
   @@unique([dailyCareLogId, careActionId])
   @@index([dailyCareLogId])
@@ -377,6 +396,32 @@ model HealthObservation {
   @@index([dailyCareLogId])
   @@index([userId])
   @@index([voiceNoteId])
+}
+
+// ── VideoClip ────────────────────────────────────────────────────────────────
+// Dumb artifact (context.md#VideoClip, ADR-0004 §5): a captured exercise or
+// reference video on S3. File + FKs + timestamp — NO processing status, NO
+// pipeline, NO AI. Attaches at day level (dailyCareLogId required); optional
+// dailyCareActionId links a clip to one exercise execution.
+model VideoClip {
+  id                String   @id @default(uuid())
+  dogId             String
+  dailyCareLogId    String
+  dailyCareActionId String?
+  userId            String
+  s3Key             String
+  durationSeconds   Int?
+  createdAt         DateTime @default(now())
+
+  dog             Dog              @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  dailyCareLog    DailyCareLog     @relation(fields: [dailyCareLogId], references: [id], onDelete: Cascade)
+  dailyCareAction DailyCareAction? @relation(fields: [dailyCareActionId], references: [id], onDelete: SetNull)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([dogId])
+  @@index([dailyCareLogId])
+  @@index([dailyCareActionId])
+  @@index([userId])
 }
 
 // ── Conversational producer ─────────────────────────────────────────────────

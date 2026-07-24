@@ -12,10 +12,15 @@ import {
   sendSuccess
 } from '../utils/responseHelpers.js'
 import { resolveTodayLog } from '../services/dailyCare/resolveTodayLog.js'
+import {
+  careActionTierDosageSelect,
+  tierDosageFromCareAction
+} from '../services/dailyCare/serializeDailyCare.js'
 import { todayUtcDateString } from '../services/dailyCare/dateUtils.js'
 import { createDogWithDefaultPlan } from '../services/carePlans/createDogWithDefaultPlan.js'
 import { DEFAULT_MOBILITY_STRENGTH_PLAN_NAME } from '../services/carePlans/defaultMobilityStrengthPlan.js'
 import { assertPhotoKeyOwnedByUser, streamDogPhoto } from '../services/s3/dogPhotos.js'
+import { serializeVideoClips } from '../services/videoClips/videoClipService.js'
 import { isS3Ready } from '../config/s3.js'
 import { normalizeShareCode } from '../lib/shareCode.js'
 
@@ -306,12 +311,21 @@ export class DogsController {
             select: {
               dailyCareActions: true,
               healthObservations: true,
-              voiceNotes: true
+              voiceNotes: true,
+              videoClips: true
             }
           },
           dailyCareActions: {
-            where: { status: 'COMPLETED' },
-            select: { id: true }
+            select: {
+              id: true,
+              careActionId: true,
+              status: true,
+              // Tier + dosage via the CareAction join (0020) — null for ad-hoc rows.
+              careAction: { select: careActionTierDosageSelect }
+            }
+          },
+          videoClips: {
+            orderBy: { createdAt: 'desc' }
           }
         }
       }),
@@ -323,10 +337,18 @@ export class DogsController {
         id: log.id,
         date: log.date,
         summary: log.summary,
-        completedCount: log.dailyCareActions.length,
+        completedCount: log.dailyCareActions.filter(a => a.status === 'COMPLETED').length,
         totalActions: log._count.dailyCareActions,
         observationCount: log._count.healthObservations,
-        voiceNoteCount: log._count.voiceNotes
+        voiceNoteCount: log._count.voiceNotes,
+        dailyCareActions: log.dailyCareActions.map(a => ({
+          id: a.id,
+          careActionId: a.careActionId,
+          status: a.status,
+          ...tierDosageFromCareAction(a.careAction)
+        })),
+        videoClipCount: log._count.videoClips,
+        videoClips: serializeVideoClips(log.videoClips)
       })),
       pagination: {
         page,

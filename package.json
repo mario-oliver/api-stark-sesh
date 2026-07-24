@@ -17,7 +17,8 @@
     "db:push": "npx prisma db push",
     "db:migrate": "npx prisma migrate dev",
     "db:studio": "npx prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "plan:import": "tsx src/scripts/importVickyPlan2.ts"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.1.0",
