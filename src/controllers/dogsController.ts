@@ -12,6 +12,10 @@ import {
   sendSuccess
 } from '../utils/responseHelpers.js'
 import { resolveTodayLog } from '../services/dailyCare/resolveTodayLog.js'
+import {
+  careActionTierDosageSelect,
+  tierDosageFromCareAction
+} from '../services/dailyCare/serializeDailyCare.js'
 import { todayUtcDateString } from '../services/dailyCare/dateUtils.js'
 import { createDogWithDefaultPlan } from '../services/carePlans/createDogWithDefaultPlan.js'
 import { DEFAULT_MOBILITY_STRENGTH_PLAN_NAME } from '../services/carePlans/defaultMobilityStrengthPlan.js'
@@ -310,8 +314,13 @@ export class DogsController {
             }
           },
           dailyCareActions: {
-            where: { status: 'COMPLETED' },
-            select: { id: true }
+            select: {
+              id: true,
+              careActionId: true,
+              status: true,
+              // Tier + dosage via the CareAction join (0020) — null for ad-hoc rows.
+              careAction: { select: careActionTierDosageSelect }
+            }
           }
         }
       }),
@@ -323,10 +332,16 @@ export class DogsController {
         id: log.id,
         date: log.date,
         summary: log.summary,
-        completedCount: log.dailyCareActions.length,
+        completedCount: log.dailyCareActions.filter(a => a.status === 'COMPLETED').length,
         totalActions: log._count.dailyCareActions,
         observationCount: log._count.healthObservations,
-        voiceNoteCount: log._count.voiceNotes
+        voiceNoteCount: log._count.voiceNotes,
+        dailyCareActions: log.dailyCareActions.map(a => ({
+          id: a.id,
+          careActionId: a.careActionId,
+          status: a.status,
+          ...tierDosageFromCareAction(a.careAction)
+        }))
       })),
       pagination: {
         page,

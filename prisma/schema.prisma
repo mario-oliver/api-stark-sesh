@@ -22,6 +22,15 @@ enum CareActionTimeOfDay {
   ANYTIME
 }
 
+// Execution context under Vicky's plan (ADR-0004) — NOT a second taxonomy;
+// `bucket` (CareBucket) stays the one taxonomy of what an action IS.
+enum CareActionTier {
+  CORE
+  ROUTINE
+  ON_WALKS
+  AS_NEEDED
+}
+
 enum DailyCareActionStatus {
   PENDING
   COMPLETED
@@ -226,6 +235,12 @@ model CareAction {
   timeOfDay              CareActionTimeOfDay?
   targetReps             Int?
   targetDurationSeconds  Int?
+  tier                   CareActionTier?
+  daysPerWeek            Int?
+  targetHoldSeconds      Int?
+  targetSets             Int?
+  restBetweenSetsSeconds Int?
+  referenceUrl           String?
   instructions           String?
   sortOrder              Int                 @default(0)
   isActive               Boolean             @default(true)

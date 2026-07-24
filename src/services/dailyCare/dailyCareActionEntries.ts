@@ -1,6 +1,7 @@
 import type { DailyCareActionStatus } from '../../generated/client.js'
 import { prisma } from '../../lib/prisma.js'
 import {
+  careActionTierDosageSelect,
   serializeDailyCareAction,
   type DailyCareActionWithRelations
 } from './serializeDailyCare.js'
@@ -8,7 +9,9 @@ import {
 const entryInclude = {
   completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
   substitutedFor: { select: { id: true, nameSnapshot: true } },
-  careAction: { select: { targetReps: true, targetDurationSeconds: true } }
+  careAction: {
+    select: { targetReps: true, targetDurationSeconds: true, ...careActionTierDosageSelect }
+  }
 } as const
 
 /** Logs actuals / status / review state on an existing daily care action. */
