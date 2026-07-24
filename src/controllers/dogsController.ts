@@ -20,6 +20,7 @@ import { todayUtcDateString } from '../services/dailyCare/dateUtils.js'
 import { createDogWithDefaultPlan } from '../services/carePlans/createDogWithDefaultPlan.js'
 import { DEFAULT_MOBILITY_STRENGTH_PLAN_NAME } from '../services/carePlans/defaultMobilityStrengthPlan.js'
 import { assertPhotoKeyOwnedByUser, streamDogPhoto } from '../services/s3/dogPhotos.js'
+import { serializeVideoClips } from '../services/videoClips/videoClipService.js'
 import { isS3Ready } from '../config/s3.js'
 import { normalizeShareCode } from '../lib/shareCode.js'
 
@@ -310,7 +311,8 @@ export class DogsController {
             select: {
               dailyCareActions: true,
               healthObservations: true,
-              voiceNotes: true
+              voiceNotes: true,
+              videoClips: true
             }
           },
           dailyCareActions: {
@@ -321,6 +323,9 @@ export class DogsController {
               // Tier + dosage via the CareAction join (0020) — null for ad-hoc rows.
               careAction: { select: careActionTierDosageSelect }
             }
+          },
+          videoClips: {
+            orderBy: { createdAt: 'desc' }
           }
         }
       }),
@@ -341,7 +346,9 @@ export class DogsController {
           careActionId: a.careActionId,
           status: a.status,
           ...tierDosageFromCareAction(a.careAction)
-        }))
+        })),
+        videoClipCount: log._count.videoClips,
+        videoClips: serializeVideoClips(log.videoClips)
       })),
       pagination: {
         page,
