@@ -57,19 +57,24 @@ on the same epic branch.
   adaptation, BrandColors blues, and capture sheet stand. No voice changes.
 
 ## Acceptance criteria
-- [ ] (machine) Workout-day truth table matches web 0032 fixtures: 1
+- [x] (machine) Workout-day truth table matches web 0032 fixtures: 1
       completion → false; 2 → true; 2 + SKIPPED → true; PARTIALLY_COMPLETED
       counts; old-model PENDING rows ignored.
-- [ ] (machine) Recommendation truth table matches web 0032 fixtures across
+      Evidence: `WorkoutModelsTests` — 8 workout-day cases + Mon–Sun window/month-boundary counting.
+- [x] (machine) Recommendation truth table matches web 0032 fixtures across
       recommended / rest / doneToday.
-- [ ] (machine) View-model flow: create called on first interaction only;
+      Evidence: `testRecommendation_truthTable_mirrorsWeb0032` — all six web fixtures verbatim (delivered mid-run by orchestrator).
+- [x] (machine) View-model flow: create called on first interaction only;
       abandon after 2 interactions → exactly 2 create calls; re-entry merges;
       video attach creates the row before clip registration (mocked client
       asserts call order).
-- [ ] (machine) Picker lists all tiers from the active plan; adding + completing
+      Evidence: `WorkoutViewModelTests` — createOnFirstInteractionOnly/abandonAfterTwo, resolveSameCardTwice creates-once-then-PATCHes, reEntry merge no-recreate, videoAttach ordered call-log create ≺ register.
+- [x] (machine) Picker lists all tiers from the active plan; adding + completing
       round-trips create + PATCH against the mocked contract.
-- [ ] (machine) iOS gate green: `xcodebuild test` → TEST SUCCEEDED; no existing
+      Evidence: `testPicker_listsEveryPlanTier`, `testPickerAdd_thenComplete_roundTripsCreatePlusPatch`; contract route/decoding in `WorkoutCreateClientTests` (incl. off-plan→404).
+- [x] (machine) iOS gate green: `xcodebuild test` → TEST SUCCEEDED; no existing
       tests weakened.
+      Evidence: TEST SUCCEEDED, 84 pass / 0 fail (baseline 67, +17). Commit `a7b372b`, merged to epic (merged suite re-run pending at tick time — see ledger).
 
 ## Feedback Loops
 ```bash

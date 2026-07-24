@@ -61,19 +61,24 @@ same epic branch; Variant B layout, colors, typography untouched.
   recommendation or Workout table.
 
 ## Acceptance criteria
-- [ ] (machine) `isWorkoutDay` truth table: 1 completion → false; 2 → true;
+- [x] (machine) `isWorkoutDay` truth table: 1 completion → false; 2 → true;
       2 completions + 1 SKIPPED → true; PARTIALLY_COMPLETED counts; old-model
       PENDING rows ignored.
-- [ ] (machine) Recommendation truth table: under quota + rested → recommended;
+      Evidence: `lib/care/workout.test.ts` "isWorkoutDay — the ≥2-CORE-completions rule (ADR-0005)" (6 cases) + workoutsThisWeek ≥2-rule cases.
+- [x] (machine) Recommendation truth table: under quota + rested → recommended;
       last 2 days both workouts → rest; end-of-week behind pace → recommended
       despite consecutive days; workout done today → doneToday.
-- [ ] (machine) Flow reducer: rows created on first interaction only; abandon
+      Evidence: `lib/care/workoutRecommendation.test.ts` "rhythm + quota truth table" — 6 fixtures (week 2026-07-20…26), mirrored verbatim by iOS 0033.
+- [x] (machine) Flow reducer: rows created on first interaction only; abandon
       after 2 interactions → exactly 2 create calls; re-entry merges existing
       rows; video attach creates the row before clip registration.
-- [ ] (machine) Picker offers all tiers from the active plan and appends a
+      Evidence: `lib/care/workoutFlow.test.ts` — commitCardResolution (4), ensureCardRow asserts ['create','register'] order (2), merge/seed re-entry (4), ADD_STEP (2).
+- [x] (machine) Picker offers all tiers from the active plan and appends a
       card whose completion round-trips through create + PATCH (mocked).
-- [ ] (machine) Full gate green: `npm test`, `npx tsc --noEmit`, scoped lint,
+      Evidence: `workout.test.ts` buildPickerGroups (whole plan by Tier) + workoutFlow "merged card PATCHes its existing row"; endpoint contract in `lib/api/dogsDailyActions.test.ts`.
+- [x] (machine) Full gate green: `npm test`, `npx tsc --noEmit`, scoped lint,
       `npm run build`; no existing tests weakened.
+      Evidence: 118/118 (baseline 90, +28), tsc/lint/build exit 0 (build env-gated same as baseline — verified identical failure on untouched baseline without env). Commit `75bd0f5`, merged to epic; merged epic gate re-run green.
 
 ## Feedback Loops
 ```bash

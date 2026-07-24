@@ -54,18 +54,22 @@ behavior on the same epic branch. No schema change, no seed re-run.
   routes, or voice flow. No recommendation logic (client-side by ADR-0005).
 
 ## Acceptance criteria
-- [ ] (machine) `actionAppliesOnDate`: ROUTINE follows frequency; CORE /
+- [x] (machine) `actionAppliesOnDate`: ROUTINE follows frequency; CORE /
       ON_WALKS / AS_NEEDED return false for auto-instantiation regardless of
       frequency; today payload for a fresh day contains ROUTINE rows only.
-- [ ] (machine) POST creates the DailyCareLog when missing, snapshots
+      Evidence: `actionAppliesOnDate.test.ts` (4 cases incl. null-tier legacy) + `vickyPlan2Instantiation.test.ts` "instantiates only the 6 ROUTINE rows" (through real `resolveTodayLog`).
+- [x] (machine) POST creates the DailyCareLog when missing, snapshots
       name/description/instructions, defaults status PENDING, returns the
       today-row shape with tier + dosage keys, 404s for off-plan careActionId,
       and creates a second row on repeat POST (no upsert).
-- [ ] (machine) Expected counts / bucketScores use ROUTINE-only denominators;
+      Evidence: `createPlannedDailyCareAction.test.ts` (log-if-missing, snapshots, PENDING default, tier+dosage shape, completedAt stamping, off-plan→404). ⚠ AMENDED: repeat POST now returns **409 CONFLICT** with `existingId` (schema `@@unique([dailyCareLogId, careActionId])` stands — PRD §Contract amended 2026-07-24; conflict + simulated-P2002-race tests in the same file, follow-up commit `760394c`).
+- [x] (machine) Expected counts / bucketScores use ROUTINE-only denominators;
       a rest day with all ROM completed computes a full score; completed CORE
       rows raise numerators without ever being expected.
-- [ ] (machine) Full gate green: `npm test`, `npx tsc --noEmit`, scoped lint,
+      Evidence: `activityScoreDenominator.test.ts` (5 cases: rest-day 100%, CORE raises numerator, never denominator, pure-workout day, legacy null-tier still expected).
+- [x] (machine) Full gate green: `npm test`, `npx tsc --noEmit`, scoped lint,
       `npm run build`; no existing tests weakened.
+      Evidence: 148/148 on issue branch (commit `3464514`), 149/149 after 409 follow-up (`760394c`); tsc/lint/build exit 0; only modified existing test updated 13→6 ROUTINE-only (correct behavior change, not weakened). Merged to epic `epic/stark-plan-workout`.
 
 ## Feedback Loops
 ```bash
