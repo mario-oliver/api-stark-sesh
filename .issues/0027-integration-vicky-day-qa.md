@@ -12,9 +12,10 @@
 no mocks)
 
 ## Contract (frozen)
-- The two PRDs' Definitions of Done are the checklist:
-  [[PRD-stark-plan-fidelity-workout-video]] §Definition of Done and
-  [[PRD-stark-plan-fidelity-workout-video-ios]] §Definition of Done.
+- The three PRDs' Definitions of Done are the checklist:
+  [[PRD-stark-plan-fidelity-workout-video]] §Definition of Done,
+  [[PRD-stark-plan-fidelity-workout-video-ios]] §Definition of Done, and
+  [[PRD-batched-workout-scheduling]] §Definition of Done (ADR-0005).
 
 ## Goal
 The whole epic proven as one lived day: Vicky's Plan 2 imported for real, a
@@ -25,7 +26,8 @@ panel showing all of it — before the umbrella branches merge.
 Final gate of the epic, same role 0009 played for the consolidation epic.
 
 ## Dependencies
-- Blocked by: 0021, 0023, 0025, 0026 (and 0022 via 0026), 0028, 0029, 0030
+- Blocked by: 0021, 0023, 0025, 0026 (and 0022 via 0026), 0028, 0029, 0030,
+  0031, 0032, 0033
 - Blocks: — (epic ships after this)
 
 ## Scope
@@ -40,7 +42,14 @@ actual phone), iOS on a real device (camera):
    draft.
 3. Verify: completions + tolerance on today; the clip plays and downloads from
    the day panel; the weekly counter incremented (and the skipped-step day
-   counts per the all-CORE rule only when it should).
+   still counts — ADR-0005: ≥2 CORE completions, skips never veto).
+3b. Batched behavior (ADR-0005): a day with no CORE interaction shows zero
+   CORE rows on Today AND a clean calendar entry, and scores full with ROM
+   done; the recommendation line reads sensibly across recommended / rest /
+   done-today states; complete only ONE CORE exercise on some day → it logs
+   but the weekly counter does NOT tick; abandon a workout after 2 exercises →
+   the day has exactly 2 CORE rows; "Add exercise" works from Today and
+   in-flow (add an ON_WALKS circle set mid-workout and complete it).
 4. Standalone walking video: upload from Today, download it back.
 5. iOS (on device): a second full Workout day — step the CORE rows → film one
    exercise via the system camera → finish → voice note → confirm; clip plays,

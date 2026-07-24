@@ -316,7 +316,7 @@ export async function getCalendarSummary(dogId: string, month: string) {
       })
     } else if (plan) {
       const expectedTotal = plan.actions.filter(a =>
-        actionAppliesOnDate(a.frequency, plan.createdAt, logDate)
+        actionAppliesOnDate(a.frequency, a.tier ?? null, plan.createdAt, logDate)
       ).length
       days.push({
         date: dateStr,

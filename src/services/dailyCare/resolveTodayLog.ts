@@ -57,7 +57,7 @@ export async function resolveTodayLog(dogId: string, dateInput: string) {
 
   if (plan) {
     const applicable = plan.actions.filter(a =>
-      actionAppliesOnDate(a.frequency, plan.createdAt, logDate)
+      actionAppliesOnDate(a.frequency, a.tier ?? null, plan.createdAt, logDate)
     )
 
     const existing = await prisma.dailyCareAction.findMany({

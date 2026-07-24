@@ -11,6 +11,7 @@ import {
 } from '../services/dailyCare/serializeDailyCare.js'
 import {
   createAdHocDailyCareAction,
+  createPlannedDailyCareAction,
   reviewDailyCareAction,
   updateDailyCareActionEntry
 } from '../services/dailyCare/dailyCareActionEntries.js'
@@ -70,6 +71,45 @@ export class DailyCareController {
 
     const serialized = await serializeDailyCareAction(updated as never)
     return sendUpdated(reply, serialized)
+  }
+
+  async createDailyAction(request: AuthenticatedRequest, reply: FastifyReply) {
+    const { id: dogId } = request.params as { id: string }
+    const body = request.body as {
+      date: string
+      careActionId: string
+      status?: DailyCareActionStatus
+      tolerance?: string | null
+      actualReps?: number | null
+      actualSets?: number | null
+      actualDurationSeconds?: number | null
+      notes?: string
+    }
+
+    const member = await assertDogMemberAccess(dogId, request.user.id)
+    if (!member) {
+      return sendForbidden(reply, 'You do not have access to this dog')
+    }
+
+    const entry = await createPlannedDailyCareAction(dogId, request.user.id, {
+      ...body,
+      tolerance: body.tolerance as never
+    })
+    if (!entry) {
+      return sendNotFound(reply, 'Care action is not on the dog’s active plan')
+    }
+    if ('conflict' in entry) {
+      // Schema enforces one PLAN action per (date, careActionId); the client
+      // should PATCH the existing row. Mirror the { success:false, error } shape
+      // and carry the existing row's id.
+      return reply.status(409).send({
+        success: false,
+        error: 'daily action already exists for this date',
+        existingId: entry.existingId
+      })
+    }
+
+    return sendSuccess(reply, entry, 201)
   }
 
   async createObservation(request: AuthenticatedRequest, reply: FastifyReply) {
