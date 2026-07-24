@@ -8,7 +8,9 @@
  *  - defaults status PENDING; explicit COMPLETED stamps completedAt / completedBy;
  *  - returns the today-row shape carrying tier + the six dosage keys;
  *  - returns null (→ 404) when the careActionId is not on the dog's active plan;
- *  - always creates a fresh row on repeat POST (no upsert).
+ *  - returns a conflict (→ 409) carrying the existing row's id on a repeat POST
+ *    for the same (log, careActionId), via a fast pre-check and a race-safe
+ *    P2002 catch — the schema's @@unique([dailyCareLogId, careActionId]) stands.
  */
 import { describe, it, before, beforeEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
@@ -69,8 +71,34 @@ const fakePrisma = {
     }
   },
   dailyCareAction: {
+    // When true, the NEXT create simulates losing the unique-slot race: a
+    // concurrent writer's row lands in the store and our insert throws P2002.
+    __raceP2002: false,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async findFirst({ where }: any) {
+      return (
+        createdActions.find(
+          a =>
+            a.dailyCareLogId === where.dailyCareLogId && a.careActionId === where.careActionId
+        ) ?? null
+      )
+    },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async create({ data }: any) {
+      if (fakePrisma.dailyCareAction.__raceP2002) {
+        fakePrisma.dailyCareAction.__raceP2002 = false
+        // A concurrent writer won the unique (log, careActionId) slot.
+        createdActions.push({
+          id: 'dca-concurrent',
+          dailyCareLogId: data.dailyCareLogId,
+          careActionId: data.careActionId ?? null
+        })
+        const err = Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+          meta: { target: ['dailyCareLogId', 'careActionId'] }
+        })
+        throw err
+      }
       const now = new Date()
       const row: Row = {
         id: `dca-${++actionSeq}`,
@@ -120,6 +148,14 @@ const fakePrisma = {
 
 let createPlannedDailyCareAction: typeof import('./dailyCareActionEntries.js')['createPlannedDailyCareAction']
 
+type CreateResult = Awaited<ReturnType<typeof createPlannedDailyCareAction>>
+type CreatedAction = Exclude<CreateResult, null | { conflict: true }>
+
+/** Narrows the create result to a created action (fails on null / conflict). */
+function assertCreated(row: CreateResult): asserts row is CreatedAction {
+  assert.ok(row !== null && !('conflict' in row), 'expected a created action, not null/conflict')
+}
+
 before(async () => {
   await mock.module(new URL('../../lib/prisma.ts', import.meta.url).href, {
     namedExports: { prisma: fakePrisma }
@@ -132,6 +168,7 @@ beforeEach(() => {
   createdActions.length = 0
   logSeq = 0
   actionSeq = 0
+  fakePrisma.dailyCareAction.__raceP2002 = false
 })
 
 describe('createPlannedDailyCareAction — create-on-do (0031)', () => {
@@ -141,7 +178,7 @@ describe('createPlannedDailyCareAction — create-on-do (0031)', () => {
       careActionId: 'ca-core-1'
     })
 
-    assert.ok(row)
+    assertCreated(row)
     // The day's DailyCareLog was created because none existed.
     assert.equal(createdLogs.length, 1)
     assert.equal(row!.dailyCareLogId, createdLogs[0].id)
@@ -195,7 +232,7 @@ describe('createPlannedDailyCareAction — create-on-do (0031)', () => {
       status: 'COMPLETED',
       actualReps: 6
     })
-    assert.ok(row)
+    assertCreated(row)
     assert.equal(row!.status, 'COMPLETED')
     assert.ok(row!.completedAt)
     assert.equal(row!.completedByUserId, 'user-1')
@@ -211,19 +248,39 @@ describe('createPlannedDailyCareAction — create-on-do (0031)', () => {
     assert.equal(createdActions.length, 0)
   })
 
-  it('always creates a fresh row on repeat POST (no upsert)', async () => {
+  it('returns a conflict carrying the existing row id on repeat POST (no duplicate row)', async () => {
+    // Contract amended: @@unique([dailyCareLogId, careActionId]) stands, so a
+    // second POST for the same pair is a 409 conflict, not a fresh row.
     const first = await createPlannedDailyCareAction('dog-1', 'user-1', {
       date: '2026-07-15',
       careActionId: 'ca-core-1',
       status: 'COMPLETED'
     })
+    assert.ok(first && !('conflict' in first))
+    const firstId = (first as { id: string }).id
+
     const second = await createPlannedDailyCareAction('dog-1', 'user-1', {
       date: '2026-07-15',
       careActionId: 'ca-core-1',
       status: 'COMPLETED'
     })
-    assert.ok(first && second)
-    assert.notEqual(first!.id, second!.id)
-    assert.equal(createdActions.length, 2)
+    assert.ok(second && 'conflict' in second && second.conflict === true)
+    assert.equal((second as { existingId: string }).existingId, firstId)
+    // The fast pre-check short-circuited: no second row was written.
+    assert.equal(createdActions.length, 1)
+  })
+
+  it('resolves a lost P2002 race to the same conflict (existing row id, race-safe)', async () => {
+    // Pre-check sees nothing, but a concurrent writer wins the unique slot and
+    // our insert throws P2002 — the catch must resolve it to a 409 conflict.
+    fakePrisma.dailyCareAction.__raceP2002 = true
+    const result = await createPlannedDailyCareAction('dog-1', 'user-1', {
+      date: '2026-07-15',
+      careActionId: 'ca-core-1'
+    })
+    assert.ok(result && 'conflict' in result && result.conflict === true)
+    assert.equal((result as { existingId: string }).existingId, 'dca-concurrent')
+    // Only the concurrent writer's row exists; ours was never persisted.
+    assert.equal(createdActions.length, 1)
   })
 })

@@ -98,6 +98,16 @@ export class DailyCareController {
     if (!entry) {
       return sendNotFound(reply, 'Care action is not on the dog’s active plan')
     }
+    if ('conflict' in entry) {
+      // Schema enforces one PLAN action per (date, careActionId); the client
+      // should PATCH the existing row. Mirror the { success:false, error } shape
+      // and carry the existing row's id.
+      return reply.status(409).send({
+        success: false,
+        error: 'daily action already exists for this date',
+        existingId: entry.existingId
+      })
+    }
 
     return sendSuccess(reply, entry, 201)
   }

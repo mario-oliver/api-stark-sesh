@@ -7,6 +7,27 @@ import {
   type DailyCareActionWithRelations
 } from './serializeDailyCare.js'
 
+/**
+ * Signals that a PLAN DailyCareAction already exists for the (date, careActionId)
+ * — the schema's `@@unique([dailyCareLogId, careActionId])`. The controller maps
+ * this to HTTP 409, carrying the existing row's id so the client can PATCH it.
+ */
+export interface DailyCareActionConflict {
+  conflict: true
+  existingId: string
+}
+
+/** Duck-typed P2002 (unique constraint violation) — works for the real Prisma
+ * known-request error and for the plain error objects thrown by test fakes. */
+function isUniqueConstraintError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'P2002'
+  )
+}
+
 const entryInclude = {
   completedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
   substitutedFor: { select: { id: true, nameSnapshot: true } },
@@ -108,8 +129,14 @@ export async function createAdHocDailyCareAction(
  * counterpart to ROUTINE auto-instantiation. Snapshots name / description /
  * instructions from the CareAction, `source: PLAN`, creating the day's
  * DailyCareLog if missing. Returns `null` (→ 404) when the careActionId is not
- * on the dog's active plan. Always creates a fresh row (no upsert): repeat ROM
- * is legitimate; clients that want update-not-duplicate PATCH the existing row.
+ * on the dog's active plan.
+ *
+ * Contract (amended): the schema enforces `@@unique([dailyCareLogId,
+ * careActionId])`, so a PLAN action is at-most-once per (date, careActionId).
+ * A repeat POST for the same pair returns a `DailyCareActionConflict` (→ 409)
+ * carrying the existing row's id; the client PATCHes that row to update-not-
+ * duplicate. A fast pre-check short-circuits the common case, and the create is
+ * wrapped so a P2002 lost race is turned into the same conflict (race-safe).
  */
 export async function createPlannedDailyCareAction(
   dogId: string,
@@ -124,7 +151,9 @@ export async function createPlannedDailyCareAction(
     actualDurationSeconds?: number | null
     notes?: string
   }
-) {
+): Promise<
+  Awaited<ReturnType<typeof serializeDailyCareAction>> | DailyCareActionConflict | null
+> {
   const logDate = parseCalendarDate(body.date)
   if (!logDate) return null
 
@@ -145,35 +174,56 @@ export async function createPlannedDailyCareAction(
     log = await prisma.dailyCareLog.create({ data: { dogId, date: logDate } })
   }
 
+  // Fast path: the (log, careActionId) pair is unique — if it already exists,
+  // report the conflict up front rather than tripping the DB constraint.
+  const existing = await prisma.dailyCareAction.findFirst({
+    where: { dailyCareLogId: log.id, careActionId: careAction.id },
+    select: { id: true }
+  })
+  if (existing) return { conflict: true, existingId: existing.id }
+
   const status = body.status ?? 'PENDING'
   const isComplete = status === 'COMPLETED' || status === 'PARTIALLY_COMPLETED'
   const now = new Date()
 
-  const action = await prisma.dailyCareAction.create({
-    data: {
-      dailyCareLogId: log.id,
-      careActionId: careAction.id,
-      bucket: careAction.bucket,
-      source: 'PLAN',
-      nameSnapshot: careAction.name,
-      descriptionSnapshot: careAction.description,
-      instructionsSnapshot: careAction.instructions,
-      targetReps: careAction.targetReps,
-      targetDurationSeconds: careAction.targetDurationSeconds,
-      sortOrder: careAction.sortOrder,
-      status,
-      tolerance: body.tolerance ?? null,
-      actualReps: body.actualReps ?? null,
-      actualDurationSeconds: body.actualDurationSeconds ?? null,
-      // DailyCareAction has no actualSets column; carry it in metadata (lossless)
-      // so nothing the client submits is dropped.
-      metadata: body.actualSets != null ? { actualSets: body.actualSets } : undefined,
-      notes: body.notes ?? null,
-      completedAt: isComplete ? now : null,
-      completedByUserId: isComplete ? userId : null
-    },
-    include: entryInclude
-  })
+  const data = {
+    dailyCareLogId: log.id,
+    careActionId: careAction.id,
+    bucket: careAction.bucket,
+    source: 'PLAN' as const,
+    nameSnapshot: careAction.name,
+    descriptionSnapshot: careAction.description,
+    instructionsSnapshot: careAction.instructions,
+    targetReps: careAction.targetReps,
+    targetDurationSeconds: careAction.targetDurationSeconds,
+    sortOrder: careAction.sortOrder,
+    status,
+    tolerance: body.tolerance ?? null,
+    actualReps: body.actualReps ?? null,
+    actualDurationSeconds: body.actualDurationSeconds ?? null,
+    // DailyCareAction has no actualSets column; carry it in metadata (lossless)
+    // so nothing the client submits is dropped.
+    metadata: body.actualSets != null ? { actualSets: body.actualSets } : undefined,
+    notes: body.notes ?? null,
+    completedAt: isComplete ? now : null,
+    completedByUserId: isComplete ? userId : null
+  }
+
+  let action
+  try {
+    action = await prisma.dailyCareAction.create({ data, include: entryInclude })
+  } catch (err) {
+    // Lost the race: another writer took the unique (log, careActionId) slot
+    // between our pre-check and insert. Resolve to the same 409 conflict.
+    if (isUniqueConstraintError(err)) {
+      const winner = await prisma.dailyCareAction.findFirst({
+        where: { dailyCareLogId: log.id, careActionId: careAction.id },
+        select: { id: true }
+      })
+      if (winner) return { conflict: true, existingId: winner.id }
+    }
+    throw err
+  }
 
   return serializeDailyCareAction(action as DailyCareActionWithRelations)
 }
