@@ -52,15 +52,27 @@ of Vicky's range; verbatim range text stays in `instructions`.
 - No web changes.
 
 ## Acceptance criteria
-- [ ] (machine) Exactness test: script output equals the data file; the data file
+- [x] (machine) Exactness test: script output equals the data file; the data file
       contains exactly the PRD's 15 rows (names incl. Left/Right, buckets, tiers,
       `daysPerWeek`, `targetSets`/`targetReps`/`targetHoldSeconds`/
       `restBetweenSetsSeconds`, `referenceUrl` on Stairs Hip Stretch only).
-- [ ] (machine) Idempotency test: two runs → one active plan, 15 rows, prior plan
+      → `src/services/carePlans/vickyPlan2.test.ts` (Gate 1 field-for-field vs the
+      PRD table + Gate 2 "created rows equal the data file exactly"). Confirmed
+      against the dev DB: 15 rows, referenceUrl only on Stairs Hip Stretch.
+- [x] (machine) Idempotency test: two runs → one active plan, 15 rows, prior plan
       `isActive: false`, zero duplicates.
-- [ ] (machine) Instantiation test: seeded AS_NEEDED rows absent from today's
+      → `vickyPlan2.test.ts` "is idempotent" + real dev-DB double-run: run 1
+      created Plan 2 and deactivated "Hip & post-op recovery plan"; run 2 = "No
+      changes". DB: 1 active plan, 15 actions, prior inactive.
+- [x] (machine) Instantiation test: seeded AS_NEEDED rows absent from today's
       instantiated actions; DAILY rows present.
-- [ ] (machine) Full suite green.
+      → `vickyPlan2Instantiation.test.ts` drives the real `resolveTodayLog`: 13
+      DAILY rows instantiated, "Backing Up" / "All Four Leg Lifts" (AS_NEEDED)
+      excluded. Required a one-line contract-alignment fix in
+      `actionAppliesOnDate` (AS_NEEDED → false, per context.md#instantiation);
+      `resolveTodayLog` itself is untouched.
+- [x] (machine) Full suite green. → 134 tests pass (124 baseline + 10 new); tsc
+      clean; eslint 0 errors; build OK.
 
 ## Feedback Loops
 ```bash
@@ -71,7 +83,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`af7255edae48fb5c70119d6e7f61b5a5633408bc` (124 tests)
 
 ## Notes for agent
 - Model the script on the idempotent patterns in `src/services/seed/` but keep it
