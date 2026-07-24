@@ -1,5 +1,6 @@
-import type { DailyCareActionStatus } from '../../generated/client.js'
+import type { DailyCareActionStatus, Tolerance } from '../../generated/client.js'
 import { prisma } from '../../lib/prisma.js'
+import { parseCalendarDate } from './dateUtils.js'
 import {
   careActionTierDosageSelect,
   serializeDailyCareAction,
@@ -94,6 +95,82 @@ export async function createAdHocDailyCareAction(
       targetReps: body.targetReps ?? null,
       targetDurationSeconds: body.targetDurationSeconds ?? null,
       status: 'PENDING'
+    },
+    include: entryInclude
+  })
+
+  return serializeDailyCareAction(action as DailyCareActionWithRelations)
+}
+
+/**
+ * Create-on-do write path (ADR-0005 / PRD §Contract, frozen). Instantiates a
+ * DailyCareAction for an active-plan CareAction on a given date — the deliberate
+ * counterpart to ROUTINE auto-instantiation. Snapshots name / description /
+ * instructions from the CareAction, `source: PLAN`, creating the day's
+ * DailyCareLog if missing. Returns `null` (→ 404) when the careActionId is not
+ * on the dog's active plan. Always creates a fresh row (no upsert): repeat ROM
+ * is legitimate; clients that want update-not-duplicate PATCH the existing row.
+ */
+export async function createPlannedDailyCareAction(
+  dogId: string,
+  userId: string,
+  body: {
+    date: string
+    careActionId: string
+    status?: DailyCareActionStatus
+    tolerance?: Tolerance | null
+    actualReps?: number | null
+    actualSets?: number | null
+    actualDurationSeconds?: number | null
+    notes?: string
+  }
+) {
+  const logDate = parseCalendarDate(body.date)
+  if (!logDate) return null
+
+  // The CareAction must live on the dog's active plan (else 404).
+  const careAction = await prisma.careAction.findFirst({
+    where: {
+      id: body.careActionId,
+      isActive: true,
+      carePlan: { dogId, isActive: true }
+    }
+  })
+  if (!careAction) return null
+
+  let log = await prisma.dailyCareLog.findUnique({
+    where: { dogId_date: { dogId, date: logDate } }
+  })
+  if (!log) {
+    log = await prisma.dailyCareLog.create({ data: { dogId, date: logDate } })
+  }
+
+  const status = body.status ?? 'PENDING'
+  const isComplete = status === 'COMPLETED' || status === 'PARTIALLY_COMPLETED'
+  const now = new Date()
+
+  const action = await prisma.dailyCareAction.create({
+    data: {
+      dailyCareLogId: log.id,
+      careActionId: careAction.id,
+      bucket: careAction.bucket,
+      source: 'PLAN',
+      nameSnapshot: careAction.name,
+      descriptionSnapshot: careAction.description,
+      instructionsSnapshot: careAction.instructions,
+      targetReps: careAction.targetReps,
+      targetDurationSeconds: careAction.targetDurationSeconds,
+      sortOrder: careAction.sortOrder,
+      status,
+      tolerance: body.tolerance ?? null,
+      actualReps: body.actualReps ?? null,
+      actualDurationSeconds: body.actualDurationSeconds ?? null,
+      // DailyCareAction has no actualSets column; carry it in metadata (lossless)
+      // so nothing the client submits is dropped.
+      metadata: body.actualSets != null ? { actualSets: body.actualSets } : undefined,
+      notes: body.notes ?? null,
+      completedAt: isComplete ? now : null,
+      completedByUserId: isComplete ? userId : null
     },
     include: entryInclude
   })

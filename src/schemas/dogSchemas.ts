@@ -60,6 +60,21 @@ export const updateDailyActionSchema = z.object({
   tolerance: z.enum(['GOOD', 'OKAY', 'POOR', 'PAINFUL', 'UNKNOWN']).nullable().optional()
 })
 
+// Create-on-do write path (ADR-0005 / PRD §Contract, frozen). Instantiates a
+// DailyCareAction for an active-plan CareAction on a date; `status` defaults
+// PENDING (the video-attach-before-resolution case). `actualSets` has no column
+// on DailyCareAction — accepted for contract parity, carried in `metadata`.
+export const createDailyActionSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  careActionId: z.string().min(1),
+  status: z.enum(['PENDING', 'COMPLETED', 'SKIPPED', 'PARTIALLY_COMPLETED', 'UNCLEAR']).optional(),
+  tolerance: z.enum(['GOOD', 'OKAY', 'POOR', 'PAINFUL', 'UNKNOWN']).nullable().optional(),
+  actualReps: z.coerce.number().int().min(0).max(999).nullable().optional(),
+  actualSets: z.coerce.number().int().min(0).max(99).nullable().optional(),
+  actualDurationSeconds: z.coerce.number().int().min(0).max(86400).nullable().optional(),
+  notes: z.string().optional()
+})
+
 const careBucketSchema = z.enum(['ACTIVITY', 'MOBILITY', 'RECOVERY'])
 
 export const createObservationSchema = z.object({
