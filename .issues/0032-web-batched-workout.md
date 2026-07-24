@@ -77,7 +77,7 @@ same epic branch; Variant B layout, colors, typography untouched.
 
 ## Feedback Loops
 ```bash
-BASE=<baseline ref filled at preflight>
+BASE=c6cea3b37cbe8bbcf0450102ae33740b983d6048
 npm test
 npx tsc --noEmit
 CHANGED=$(git diff --name-only --diff-filter=ACMR "$BASE" -- '*.ts' '*.tsx')
@@ -86,7 +86,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled at preflight>`
+`c6cea3b37cbe8bbcf0450102ae33740b983d6048`
 
 ## Notes for agent
 - Worktree gotcha: run a real `npm ci` (Turbopack rejects out-of-root

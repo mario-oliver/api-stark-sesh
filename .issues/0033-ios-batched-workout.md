@@ -79,7 +79,7 @@ xcodebuild test -project StarkHealthiOS.xcodeproj -scheme StarkHealthiOS \
 ```
 
 ## Baseline ref
-`<filled at preflight>`
+`88152ec0ef592d66258121e5ed1c758b780084d0`
 
 ## Notes for agent
 - Worktree gotchas: copy `StarkHealthiOS/Config/Secrets.xcconfig` from the main

@@ -69,7 +69,7 @@ behavior on the same epic branch. No schema change, no seed re-run.
 
 ## Feedback Loops
 ```bash
-BASE=<baseline ref filled at preflight>
+BASE=c7702cf3a01535e2dc361b714208c845233a4635
 npm test
 npx tsc --noEmit
 CHANGED=$(git diff --name-only --diff-filter=ACMR "$BASE" -- '*.ts')
@@ -78,7 +78,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled at preflight>`
+`c7702cf3a01535e2dc361b714208c845233a4635`
 
 ## Notes for agent
 - Run `npx prisma generate` after checkout (stale generated client causes
