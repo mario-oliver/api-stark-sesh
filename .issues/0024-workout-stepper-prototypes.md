@@ -49,8 +49,15 @@ used one-handed next to a Great Dane.
 ## Acceptance criteria
 - [x] (machine) `npm test`, `npx tsc --noEmit`, scoped lint, `npm run build` pass
       (dev route compiles; no test regressions).
-- [ ] (trust-prior-verify) Mario walks all three on a phone-sized viewport and
+- [x] (trust-prior-verify) Mario walks all three on a phone-sized viewport and
       picks one (or a combination) — the choice recorded in this issue file.
+      ✅ CHOSEN 2026-07-23: **Variant B — Checklist** (whole-workout scrolling
+      page, one card expanded at a time, auto-advance on complete, sticky
+      progress header), INCLUDING the Master palette/type it wears (warm
+      orange #F97316 / trust blue #2563EB on cream #FFF7ED, Varela Round +
+      Nunito Sans). Per design-system rule, palette/type adoption is app-wide
+      via tokens — applied by 0025, never workout-only. 0029 adapts B
+      SwiftUI-native.
 
 ## Feedback Loops
 ```bash
