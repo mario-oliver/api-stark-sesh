@@ -13,24 +13,52 @@ const llmScoreSchema = z.object({
   signals: z.array(z.string()).optional()
 })
 
-function computeActivityScore(
-  tasks: Array<{ status: string; nameSnapshot: string; source: string }>
-): BucketScore {
+type ScoreTask = {
+  status: string
+  nameSnapshot: string
+  source: string
+  careAction?: { tier: string | null } | null
+}
+
+/**
+ * The "expected" denominator is ROUTINE-only (ADR-0005): only auto-instantiated
+ * rows are expected on a given day. `ROUTINE` — and legacy `null`-tier PLAN rows
+ * that predate the concept — count toward the denominator; `CORE` / `ON_WALKS` /
+ * `AS_NEEDED` are instantiate-on-do, so when completed they raise the numerator
+ * but are never expected. A rest day with all ROM done therefore scores 100%.
+ */
+function isExpectedTier(tier: string | null | undefined): boolean {
+  return tier == null || tier === 'ROUTINE'
+}
+
+export function computeActivityScore(tasks: ScoreTask[]): BucketScore {
   const planned = tasks.filter(t => t.source === 'PLAN')
+  const expected = planned.filter(t => isExpectedTier(t.careAction?.tier))
   const completed = tasks.filter(t => t.status === 'COMPLETED')
   const skipped = tasks.filter(t => t.status === 'SKIPPED')
   const adHoc = tasks.filter(
     t => t.source === 'LLM_EXTRACTED' || t.source === 'PLAN_VARIATION' || t.source === 'AD_HOC'
   )
 
-  const plannedTotal = planned.length || tasks.length
-  const plannedCompleted = planned.filter(t => t.status === 'COMPLETED').length
-  const ratio = plannedTotal > 0 ? plannedCompleted / plannedTotal : completed.length > 0 ? 1 : 0
+  // ROUTINE-only denominator; every completion (incl. batched CORE/ON_WALKS work)
+  // raises the numerator, capped at the expected total so extras never overflow.
+  const expectedTotal = expected.length
+  const completedCount = completed.length
+  const ratio =
+    expectedTotal > 0
+      ? Math.min(1, completedCount / expectedTotal)
+      : completedCount > 0
+        ? 1
+        : 0
   const score = Math.round(ratio * 100)
 
   const reasons: string[] = []
-  if (plannedCompleted > 0) {
-    reasons.push(`Completed ${plannedCompleted} of ${plannedTotal} planned items`)
+  if (completedCount > 0) {
+    reasons.push(
+      expectedTotal > 0
+        ? `Completed ${completedCount} of ${expectedTotal} expected item(s)`
+        : `Completed ${completedCount} item(s)`
+    )
   }
   if (adHoc.length > 0) {
     reasons.push(`Added ${adHoc.length} item(s) from voice or manual entry`)
@@ -161,7 +189,8 @@ export async function computeBucketScores(dailyCareLogId: string) {
     where: { id: dailyCareLogId },
     include: {
       dog: true,
-      dailyCareActions: true,
+      // Join the CareAction tier so the activity denominator can be ROUTINE-only.
+      dailyCareActions: { include: { careAction: { select: { tier: true } } } },
       healthObservations: true,
       voiceNotes: { where: { processingStatus: 'PROCESSED' }, orderBy: { createdAt: 'desc' } }
     }

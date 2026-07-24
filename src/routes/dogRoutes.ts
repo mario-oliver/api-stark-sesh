@@ -24,6 +24,7 @@ import {
   updateCareActionSchema,
   updateCarePlanSchema,
   updateDailyActionSchema,
+  createDailyActionSchema,
   updateActualsSchema,
   createAdHocActionSchema,
   reviewActionSchema,
@@ -193,6 +194,12 @@ export default async function dogRoutes(
     preHandler: validateParams(dogNoteIdParamSchema),
     handler: async (request, reply) =>
       voiceNotes.getVoiceNote(request as AuthenticatedRequest, reply)
+  })
+
+  fastify.post('/:id/daily-actions', {
+    preHandler: [validateParams(dogIdParamSchema), validate(createDailyActionSchema)],
+    handler: async (request, reply) =>
+      dailyCare.createDailyAction(request as AuthenticatedRequest, reply)
   })
 
   fastify.patch('/:id/daily-actions/:actionId', {

@@ -1,12 +1,12 @@
 /**
- * Issue 0021 — instantiation behaviour of the seeded Plan 2 (asserts EXISTING
- * resolveTodayLog logic; no changes to it).
+ * Instantiation behaviour of the seeded Plan 2 through the real resolveTodayLog.
  *
- * context.md#instantiation: AS_NEEDED actions are never auto-instantiated into
- * Today; scheduled (DAILY) actions are. Driven through the real resolveTodayLog
- * against an in-memory Prisma fake seeded with Vicky's 15 rows: the 13 DAILY
- * rows land as today's DailyCareActions, the 2 AS_NEEDED rows ("Backing Up",
- * "All Four Leg Lifts") do not.
+ * Amended for issue 0031 / ADR-0005: instantiation is a Tier rule. Only ROUTINE
+ * auto-instantiates into Today; CORE / ON_WALKS / AS_NEEDED are instantiate-on-do
+ * regardless of frequency. Driven against an in-memory Prisma fake seeded with
+ * Vicky's 15 rows: the 6 ROUTINE ROM rows land as today's DailyCareActions; the
+ * 5 CORE, 2 ON_WALKS, and 2 AS_NEEDED rows do not — a fresh day is a rest day,
+ * not a pile of undone workout exercises.
  */
 import { describe, it, before, mock } from 'node:test'
 import assert from 'node:assert/strict'
@@ -187,8 +187,8 @@ before(async () => {
   ;({ resolveTodayLog } = await import('../dailyCare/resolveTodayLog.js'))
 })
 
-describe('Plan 2 instantiation — AS_NEEDED excluded, DAILY included (0021)', () => {
-  it('instantiates the 13 DAILY rows and never the 2 AS_NEEDED rows', async () => {
+describe('Plan 2 instantiation — ROUTINE-only auto-instantiation (0031/ADR-0005)', () => {
+  it('instantiates only the 6 ROUTINE rows; never CORE / ON_WALKS / AS_NEEDED', async () => {
     const payload = await resolveTodayLog('dog-1', '2026-07-15')
 
     const rows = payload.dailyLog.dailyCareActions
@@ -198,25 +198,30 @@ describe('Plan 2 instantiation — AS_NEEDED excluded, DAILY included (0021)', (
     // Every instantiated row is plan-sourced.
     for (const r of rows) assert.equal(r.source, 'PLAN')
 
-    // Exactly the 13 DAILY actions were instantiated.
-    const dailyActions = VICKY_PLAN_2_ACTIONS.filter(a => a.frequency === 'DAILY')
-    const asNeededActions = VICKY_PLAN_2_ACTIONS.filter(a => a.frequency === 'AS_NEEDED')
-    assert.equal(dailyActions.length, 13)
-    assert.equal(asNeededActions.length, 2)
-    assert.equal(rows.length, 13)
+    // Exactly the ROUTINE actions were instantiated — a fresh day is a rest day.
+    const routine = VICKY_PLAN_2_ACTIONS.filter(a => a.tier === 'ROUTINE')
+    const nonRoutine = VICKY_PLAN_2_ACTIONS.filter(a => a.tier !== 'ROUTINE')
+    assert.equal(routine.length, 6)
+    assert.equal(nonRoutine.length, 9) // 5 CORE + 2 ON_WALKS + 2 AS_NEEDED
+    assert.equal(rows.length, 6)
 
-    for (const a of dailyActions) {
-      assert.ok(instantiatedNames.has(a.name), `DAILY "${a.name}" must be instantiated`)
+    for (const a of routine) {
+      assert.ok(instantiatedNames.has(a.name), `ROUTINE "${a.name}" must be instantiated`)
     }
 
-    // The AS_NEEDED rows are absent from today's actions.
-    for (const a of asNeededActions) {
-      assert.ok(!instantiatedNames.has(a.name), `AS_NEEDED "${a.name}" must NOT be instantiated`)
+    // No non-ROUTINE row is auto-instantiated, whatever its frequency.
+    for (const a of nonRoutine) {
+      assert.ok(
+        !instantiatedNames.has(a.name),
+        `${a.tier} "${a.name}" must NOT be auto-instantiated`
+      )
     }
-    // ca-6 (Backing Up) and ca-7 (All Four Leg Lifts) never appear.
+    // ca-1 (CORE), ca-8 (ON_WALKS), ca-6 (AS_NEEDED) never appear;
+    // ca-10 and ca-15 (ROUTINE ROM) do.
+    assert.ok(!instantiatedIds.has('ca-1'))
+    assert.ok(!instantiatedIds.has('ca-8'))
     assert.ok(!instantiatedIds.has('ca-6'))
-    assert.ok(!instantiatedIds.has('ca-7'))
-    assert.ok(instantiatedIds.has('ca-1'))
+    assert.ok(instantiatedIds.has('ca-10'))
     assert.ok(instantiatedIds.has('ca-15'))
   })
 })
