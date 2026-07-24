@@ -58,13 +58,43 @@ multipart path — presigned PUT only.
 - No web changes.
 
 ## Acceptance criteria
-- [ ] (machine) Presign endpoint returns a PUT URL only for allowed video
+- [x] (machine) Presign endpoint returns a PUT URL only for allowed video
       content types; non-members get 403 on every route.
-- [ ] (machine) Register→today-payload→url→delete round-trip passes; standalone
+      → `videoClipsController.test.ts` (presign 200 for video/mp4 with per-dog
+      s3Key + Content-Type header; 400 for image/png, audio/mpeg,
+      video/x-msvideo; 400 above the 500 MB cap; all four routes 403 for a
+      non-member with no row created) and `services/s3/videoClips.test.ts`
+      (content-type normalization/rejection, per-dog key build/ownership,
+      policy gate fires before any S3 call). DB-free, green.
+- [x] (machine) Register→today-payload→url→delete round-trip passes; standalone
       (no `dailyCareActionId`) and exercise-linked clips both serialize
       correctly; cross-log `dailyCareActionId` is rejected.
-- [ ] (machine) Day/history payloads include the day's clips.
-- [ ] (machine) Full suite green.
+      → `videoClipsController.test.ts`: round-trip test registers a standalone
+      and an ACTION-linked clip, sees both in `loadTodayPayload().dailyLog
+      .videoClips` (frozen shape, exact key set asserted on register:
+      `id, dogId, dailyCareLogId, dailyCareActionId, userId, s3Key,
+      durationSeconds, createdAt`), fetches the presigned GET url, deletes
+      (S3 DeleteObjectCommand attempted), then url → 404. Cross-log
+      `dailyCareActionId` → 400; foreign dog's `dailyCareLogId` → 404; foreign
+      dog's `s3Key` → 400; omitted `dailyCareLogId`/`date` resolves (creates)
+      today's log. Green.
+- [x] (machine) Day/history payloads include the day's clips.
+      → `loadTodayPayload` embeds `dailyLog.videoClips` (newest first);
+      `getHistory` log entries carry `videoClips` + `videoClipCount` —
+      asserted in `videoClipsController.test.ts` (history suite). Green.
+- [x] (machine) Full suite green.
+      → `npm test` 112/112 pass (21 added by this issue), `npx tsc --noEmit`
+      exit 0, `npm run lint` 0 errors (1 pre-existing warning in
+      `src/types/index.ts`, untouched), `npm run build` exit 0
+      (prisma generate + tsc; regenerated `src/generated` committed).
+- [~] (deferred) Migration applied to a database.
+      → `prisma/migrations/20260723120000_videoclip/migration.sql` was
+      hand-written (the worktree's `.env` symlinks to the shared dev DB, whose
+      apply rights another agent owns — `migrate dev --create-only` would have
+      connected to it) and verified byte-identical to
+      `npx prisma migrate diff --from-schema <baseline cc2c4c0 schema>
+      --to-schema prisma/schema.prisma --script` (offline, no DB touched).
+      Apply-to-DB verification DEFERRED to integration (0027).
 
 ## Feedback Loops
 ```bash
@@ -75,7 +105,7 @@ npm run build
 ```
 
 ## Baseline ref
-`<filled by the inner loop at preflight>`
+`cc2c4c0dc6d3fe99ab851d5ef677d090376ec4c1`
 
 ## Notes for agent
 - Mirror the dog-photo presign flow (`src/services/s3/dogPhotos.ts`,
