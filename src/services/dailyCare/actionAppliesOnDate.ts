@@ -16,7 +16,9 @@ export function actionAppliesOnDate(
     case 'WEEKLY':
       return daysBetweenUtc(planCreatedAt, logDate) % 7 === 0
     case 'AS_NEEDED':
-      return true
+      // context.md#instantiation: AS_NEEDED actions are never auto-instantiated
+      // into Today — they are logged only when actually done.
+      return false
     default:
       return true
   }
